@@ -32,6 +32,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[Role] = mapped_column(Enum(Role), default=Role.designer)
     is_active: Mapped[bool] = mapped_column(default=True)
+    email_confirmed: Mapped[bool] = mapped_column(default=False)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     organization: Mapped[Organization | None] = relationship(back_populates="users")

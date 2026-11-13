@@ -5,7 +5,7 @@ import { Check } from 'lucide-react'
 import { AuthLayout } from '../../shared/components/AuthLayout'
 import { Alert, Button, Checkbox, FormField, Input, PasswordInput, Select, TextLink, cn } from '../../shared/components/ui'
 import { registerSchema, type RegisterValues } from '../../shared/validation/auth'
-import { organizations } from '../../shared/mock/data'
+import { organizations as mockOrganizations } from '../../shared/mock/data'
 import { t } from '../../shared/i18n'
 
 /** Route: /register · Public */
@@ -20,13 +20,14 @@ export const argTypes = {
 }
 
 type Props = Partial<typeof args> & {
+  organizations?: { id: string; name: string; inn: string }[]
   onSubmit?: (values: RegisterValues) => void
   onLogin?: () => void
   onHome?: () => void
 }
 
 export default function Register(props: Props) {
-  const { state, orgMode, onSubmit, onLogin, onHome } = { ...args, ...props }
+  const { state, orgMode, onSubmit, onLogin, onHome, organizations = mockOrganizations } = { ...args, ...props }
   const {
     register,
     handleSubmit,

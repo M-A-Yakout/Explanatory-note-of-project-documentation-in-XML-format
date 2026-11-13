@@ -6,11 +6,9 @@
 import type { AppNotification, Organization, Session, User } from '../types'
 import { notifications, organizations, users } from '../mock/data'
 
-export class ApiError extends Error {
-  constructor(public code: 'invalid_credentials' | 'locked' | 'token_expired' | 'conflict' | 'network', message: string) {
-    super(message)
-  }
-}
+import { ApiError } from './errors'
+import { httpAuth, httpOrganizations } from './http'
+export { ApiError }
 
 export interface RegisterPayload {
   fullName: string
@@ -27,6 +25,8 @@ export interface AuthService {
   confirmEmail(token: string): Promise<{ email: string }>
   acceptInvite(token: string, payload: { fullName: string; password: string }): Promise<Session>
   logout(): Promise<void>
+  /** Current session from a stored token, or null. */
+  me(): Promise<Session | null>
 }
 
 export interface OrganizationService {
@@ -81,6 +81,9 @@ const mockAuth: AuthService = {
   async logout() {
     await delay(150)
   },
+  async me() {
+    return null
+  },
 }
 
 const mockOrganizations: OrganizationService = {
@@ -104,8 +107,11 @@ const mockNotifications: NotificationService = {
   },
 }
 
+/** Set VITE_USE_MOCK=true to run the UI without the backend. */
+const useMock = import.meta.env.VITE_USE_MOCK === 'true'
+
 export const api = {
-  auth: mockAuth,
-  organizations: mockOrganizations,
+  auth: useMock ? mockAuth : httpAuth,
+  organizations: useMock ? mockOrganizations : httpOrganizations,
   notifications: mockNotifications,
 }

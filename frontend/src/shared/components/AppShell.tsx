@@ -25,13 +25,16 @@ import {
 import { navFor, type RouteDef } from '../app/routes'
 import { documents, notifications, organizations, projects, users } from '../mock/data'
 import { t } from '../i18n'
-import type { Role } from '../types'
+import type { Role, Organization, User } from '../types'
 import { Logo } from './Logo'
 import { cn } from './ui'
 
 export type ShellPanel = 'none' | 'search' | 'notifications' | 'user' | 'org'
 
 type Props = {
+  /** Real session data; falls back to mock data when omitted. */
+  user?: User
+  organization?: Organization
   role: Role
   activeKey: string
   title: string
@@ -66,14 +69,16 @@ export function AppShell({
   onNavigate,
   onLogout,
   onToggleTheme,
+  user: userProp,
+  organization,
   children,
 }: Props) {
   const [panel, setPanel] = useState<ShellPanel>(initialPanel)
   const [drawer, setDrawer] = useState(false)
-  const [orgId, setOrgId] = useState('org-1')
-  const user = users.find((u) => u.role === role) ?? users[0]
-  const org = organizations.find((o) => o.id === orgId)!
-  const myOrgs = role === 'super_admin' ? organizations : organizations.filter((o) => user.organizationIds.includes(o.id))
+  const [orgId, setOrgId] = useState(organization?.id ?? 'org-1')
+  const user = userProp ?? users.find((u) => u.role === role) ?? users[0]
+  const org = organization ?? organizations.find((o) => o.id === orgId)!
+  const myOrgs = organization ? [organization] : role === 'super_admin' ? organizations : organizations.filter((o) => user.organizationIds.includes(o.id))
   const unread = notifications.filter((n) => !n.read).length
   const toggle = (p: ShellPanel) => setPanel((cur) => (cur === p ? 'none' : p))
 

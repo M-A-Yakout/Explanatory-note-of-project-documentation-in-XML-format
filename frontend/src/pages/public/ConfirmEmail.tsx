@@ -134,7 +134,7 @@ function Invite({
           <dt className="text-muted">Почта</dt>
           <dd className="truncate">{email}</dd>
           <dt className="text-muted">Действует до</dt>
-          <dd>19 марта 2025</dd>
+          <dd>19 марта 2026</dd>
         </dl>
       </div>
 

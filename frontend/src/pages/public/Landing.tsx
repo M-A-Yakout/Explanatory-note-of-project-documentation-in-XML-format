@@ -74,7 +74,7 @@ export default function Landing(props: Props) {
               )}
             </div>
             <p className="mt-6 text-sm text-muted">
-              Схема по умолчанию: <span className="font-mono text-fg">ExplanatoryNote 01.05</span> · обновлена 1 сентября 2024
+              Схема по умолчанию: <span className="font-mono text-fg">ExplanatoryNote 01.05</span> · обновлена 1 сентября 2026
             </p>
           </div>
 
@@ -157,7 +157,7 @@ export default function Landing(props: Props) {
       </main>
 
       <footer className="mx-auto flex max-w-[1200px] flex-wrap justify-between gap-4 px-5 py-8 text-sm text-muted sm:px-8">
-        <span>© 2025 ПЗ Генератор</span>
+        <span>© 2026 ПЗ Генератор</span>
         <span>Соответствует требованиям Постановления Правительства РФ № 87 и приказам Минстроя России</span>
       </footer>
     </div>

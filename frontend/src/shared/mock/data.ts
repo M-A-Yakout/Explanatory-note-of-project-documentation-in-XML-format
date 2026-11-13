@@ -53,7 +53,7 @@ export const users: User[] = [
     position: 'Главный инженер проекта',
     phone: '+7 916 204-18-77',
     createdAt: '2023-03-01T08:00:00Z',
-    lastLoginAt: '2025-03-12T07:41:00Z',
+    lastLoginAt: '2026-03-12T07:41:00Z',
   },
   {
     id: 'u-2',
@@ -98,8 +98,8 @@ export const schemas: XmlSchema[] = [
     namespace: 'http://minstroyrf.gov.ru/schemas/explanatorynote/01.05',
     status: 'active',
     isDefault: true,
-    publishedAt: '2024-09-01T00:00:00Z',
-    uploadedAt: '2024-09-03T10:12:00Z',
+    publishedAt: '2026-09-01T00:00:00Z',
+    uploadedAt: '2026-09-03T10:12:00Z',
     sizeKb: 184,
     changelog: [
       'Добавлен блок сведений о проектной мощности для линейных объектов',
@@ -125,7 +125,7 @@ export const projects: Project[] = [
   {
     id: 'p-1',
     organizationId: 'org-1',
-    code: 'ПСИ-2024-017',
+    code: 'ПСИ-2026-017',
     name: 'Многоквартирный жилой дом со встроенными помещениями и подземной автостоянкой',
     address: 'г. Москва, Хорошёвский р-н, ул. Зорге, вл. 9',
     cadastralNumber: '77:09:0005008:1297',
@@ -136,12 +136,12 @@ export const projects: Project[] = [
     status: 'active',
     participantIds: ['u-1', 'u-2'],
     createdAt: '2024-04-02T09:00:00Z',
-    updatedAt: '2025-03-11T15:22:00Z',
+    updatedAt: '2026-03-11T15:22:00Z',
   },
   {
     id: 'p-2',
     organizationId: 'org-1',
-    code: 'ПСИ-2024-022',
+    code: 'ПСИ-2026-022',
     name: 'Общеобразовательная школа на 1100 мест',
     address: 'Московская обл., г. Красногорск, мкр. Опалиха, ул. Геологов',
     cadastralNumber: '50:11:0020406:3381',
@@ -152,7 +152,7 @@ export const projects: Project[] = [
     status: 'active',
     participantIds: ['u-1'],
     createdAt: '2024-06-18T09:00:00Z',
-    updatedAt: '2025-03-07T11:05:00Z',
+    updatedAt: '2026-03-07T11:05:00Z',
   },
 ]
 
@@ -171,7 +171,7 @@ export const documents: ExplanatoryNote[] = [
     warningsCount: 7,
     currentVersion: 6,
     createdAt: '2024-11-20T09:00:00Z',
-    updatedAt: '2025-03-12T07:58:00Z',
+    updatedAt: '2026-03-12T07:58:00Z',
   },
   {
     id: 'd-2',
@@ -187,7 +187,7 @@ export const documents: ExplanatoryNote[] = [
     warningsCount: 1,
     currentVersion: 11,
     createdAt: '2024-08-01T09:00:00Z',
-    updatedAt: '2025-03-06T16:40:00Z',
+    updatedAt: '2026-03-06T16:40:00Z',
   },
 ]
 
@@ -197,7 +197,7 @@ export const notifications: AppNotification[] = [
     kind: 'validation',
     title: 'Проверка завершена с ошибками',
     body: 'ПЗ — Раздел 1. ЖК на ул. Зорге: 4 ошибки XSD, 7 предупреждений.',
-    createdAt: '2025-03-12T07:59:00Z',
+    createdAt: '2026-03-12T07:59:00Z',
     read: false,
     link: '/app/documents/d-1/validation',
   },
@@ -206,7 +206,7 @@ export const notifications: AppNotification[] = [
     kind: 'review',
     title: 'Замечания эксперта',
     body: 'Гарипова Л. Р. оставила 2 замечания к разделу ТЭП.',
-    createdAt: '2025-03-11T13:20:00Z',
+    createdAt: '2026-03-11T13:20:00Z',
     read: false,
   },
   {
@@ -214,7 +214,7 @@ export const notifications: AppNotification[] = [
     kind: 'system',
     title: 'Опубликована схема 01.05',
     body: 'Схема 01.05 назначена схемой по умолчанию для новых документов.',
-    createdAt: '2025-03-03T09:00:00Z',
+    createdAt: '2026-03-03T09:00:00Z',
     read: true,
   },
 ]

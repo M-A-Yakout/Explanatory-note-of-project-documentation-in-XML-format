@@ -26,7 +26,7 @@ export function AuthLayout({
           <div className="w-full max-w-[420px]">{children}</div>
         </main>
         <footer className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted">
-          <span>© 2025 ПЗ Генератор</span>
+          <span>© 2026 ПЗ Генератор</span>
           <span>Поддержка: support@pz-xml.ru</span>
         </footer>
       </div>

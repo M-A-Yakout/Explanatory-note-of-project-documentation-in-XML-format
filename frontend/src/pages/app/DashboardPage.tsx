@@ -1,7 +1,7 @@
 import React from 'react'
 import { AppShell } from '../../shared/components/AppShell'
 import { findRoute, routes } from '../../shared/app/routes'
-import type { Role } from '../../shared/types'
+import type { Organization, User, Role } from '../../shared/types'
 
 /** Authenticated layout for every /app and /admin route · any signed-in role */
 export const args = {
@@ -21,10 +21,12 @@ type Props = Partial<typeof args> & {
   onNavigate?: (key: string) => void
   onLogout?: () => void
   onToggleTheme?: () => void
+  user?: User
+  organization?: Organization
 }
 
 export default function DashboardPage(props: Props) {
-  const { role, page, panel, theme, onNavigate, onLogout, onToggleTheme } = { ...args, ...props }
+  const { role, page, panel, theme, onNavigate, onLogout, onToggleTheme, user, organization } = { ...args, ...props }
   const route = findRoute(page) ?? routes[0]
   const group = { public: 1, common: 2, projects: 3, documents: 4, admin: 5 }[route.group]
 
@@ -38,6 +40,8 @@ export default function DashboardPage(props: Props) {
       onNavigate={onNavigate}
       onLogout={onLogout}
       onToggleTheme={onToggleTheme}
+      user={user}
+      organization={organization}
     >
       {/* Content slot: every page of groups 2–5 renders here. */}
       <section

@@ -146,17 +146,17 @@ export function FormField({
   )
 }
 
-export function Checkbox({
-  label,
-  error,
-  ...rest
-}: React.InputHTMLAttributes<HTMLInputElement> & { label: React.ReactNode; error?: string }) {
+export const Checkbox = forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement> & { label: React.ReactNode; error?: string }
+>(function Checkbox({ label, error, ...rest }, ref) {
   const id = useId()
   return (
     <div className="flex flex-col gap-1">
       <label htmlFor={id} className="flex cursor-pointer items-start gap-2.5 text-sm text-fg">
         <input
           id={id}
+          ref={ref}
           type="checkbox"
           aria-invalid={!!error || undefined}
           className="mt-0.5 size-4 shrink-0 cursor-pointer rounded border-border-strong accent-[var(--primary)]"
@@ -171,7 +171,7 @@ export function Checkbox({
       )}
     </div>
   )
-}
+})
 
 export function Alert({
   tone = 'info',
