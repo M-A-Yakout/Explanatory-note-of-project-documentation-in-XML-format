@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Simplified working schema for the explanatory note (NOT the official Минстрой XSD). -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+
+  <xs:simpleType name="NonEmpty">
+    <xs:restriction base="xs:string"><xs:minLength value="1"/><xs:maxLength value="500"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="CadastralNumber">
+    <xs:restriction base="xs:string"><xs:pattern value="\d{2}:\d{2}:\d{6,7}:\d{1,6}"/></xs:restriction>
+  </xs:simpleType>
+
+  <xs:simpleType name="ConstructionType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="new"/><xs:enumeration value="reconstruction"/>
+      <xs:enumeration value="overhaul"/><xs:enumeration value="linear"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="ObjectType">
+    <xs:sequence>
+      <xs:element name="Name" type="NonEmpty"/>
+      <xs:element name="Address" type="NonEmpty"/>
+      <xs:element name="CadastralNumber" type="CadastralNumber"/>
+      <xs:element name="ConstructionType" type="ConstructionType"/>
+      <xs:element name="Developer" type="NonEmpty"/>
+      <xs:element name="Customer" type="xs:string" minOccurs="0"/>
+      <xs:element name="Designer" type="xs:string" minOccurs="0"/>
+      <xs:element name="FunctionalPurpose" type="xs:string" minOccurs="0"/>
+      <xs:element name="FinancingSource" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="IndicatorType">
+    <xs:sequence>
+      <xs:element name="Name" type="NonEmpty"/>
+      <xs:element name="Unit" type="NonEmpty"/>
+      <xs:element name="Value" type="xs:decimal"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="SectionType">
+    <xs:sequence>
+      <xs:element name="Title" type="NonEmpty"/>
+      <xs:element name="Note" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attribute name="code" type="xs:string" use="required"/>
+  </xs:complexType>
+
+  <xs:complexType name="ReferenceType">
+    <xs:sequence>
+      <xs:element name="Code" type="NonEmpty"/>
+      <xs:element name="Title" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:element name="ExplanatoryNote">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Object" type="ObjectType"/>
+        <xs:element name="Indicators">
+          <xs:complexType><xs:sequence>
+            <xs:element name="Indicator" type="IndicatorType" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType>
+        </xs:element>
+        <xs:element name="Composition">
+          <xs:complexType><xs:sequence>
+            <xs:element name="Section" type="SectionType" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType>
+        </xs:element>
+        <xs:element name="References">
+          <xs:complexType><xs:sequence>
+            <xs:element name="Reference" type="ReferenceType" maxOccurs="unbounded"/>
+          </xs:sequence></xs:complexType>
+        </xs:element>
+        <xs:element name="Additional" minOccurs="0">
+          <xs:complexType><xs:sequence>
+            <xs:element name="Notes" type="xs:string"/>
+          </xs:sequence></xs:complexType>
+        </xs:element>
+      </xs:sequence>
+      <xs:attribute name="schemaVersion" type="xs:string" use="required"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>

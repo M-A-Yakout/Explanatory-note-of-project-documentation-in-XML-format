@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.core.db import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.schema_registry import load_bundled  # noqa: E402
 
 
 @pytest.fixture()
@@ -27,6 +28,8 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override
+    with Session() as db:
+        load_bundled(db)
     settings.require_email_confirmation = False
     with TestClient(app) as c:
         c.session_factory = Session

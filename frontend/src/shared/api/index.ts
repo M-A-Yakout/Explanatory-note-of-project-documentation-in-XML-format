@@ -3,11 +3,11 @@
  * mock implementations today. To use a real backend, implement the same
  * interfaces with fetch() in `shared/api/http/*` and swap the export below.
  */
-import type { AppNotification, Organization, Session, User } from '../types'
-import { notifications, organizations, users } from '../mock/data'
+import type { Author, BulkAction, BulkResult, SearchResult, ImportReport, ValidationResult, XmlPreview, SchemaInfo, StructureNode, Change, DocumentData, DocumentDetail, DocumentStatus, ExplanatoryNote, VersionMeta, AppNotification, Organization, Paginated, Project, ProjectStatus, ConstructionType, Session, User } from '../types'
+import { notifications, organizations, projects as mockProjectRows, users } from '../mock/data'
 
 import { ApiError } from './errors'
-import { httpAuth, httpOrganizations } from './http'
+import { httpAuth, httpDocuments, httpOrganizations, httpProjects, httpSchemas, httpSearch } from './http'
 export { ApiError }
 
 export interface RegisterPayload {
@@ -32,6 +32,96 @@ export interface AuthService {
 export interface OrganizationService {
   listPublic(): Promise<Pick<Organization, 'id' | 'name' | 'inn'>[]>
   get(id: string): Promise<Organization>
+}
+
+export interface ProjectListParams {
+  q?: string
+  status?: ProjectStatus | ''
+  constructionType?: ConstructionType | ''
+  sort?: 'updated_at' | 'created_at' | 'name' | 'code'
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export type ProjectInput = Pick<Project, 'name' | 'address' | 'cadastralNumber' | 'constructionType' | 'developer'> &
+  Partial<Pick<Project, 'customer' | 'designer' | 'functionalPurpose' | 'financingSource'>>
+
+export interface ProjectService {
+  list(params: ProjectListParams): Promise<Paginated<Project>>
+  get(id: string): Promise<Project>
+  create(input: ProjectInput): Promise<Project>
+  update(id: string, patch: Partial<ProjectInput> & { status?: ProjectStatus }): Promise<Project>
+  remove(id: string): Promise<void>
+}
+
+export interface DocumentListParams {
+  q?: string
+  projectId?: string
+  status?: DocumentStatus | ''
+  schemaVersion?: string
+  authorId?: string
+  /** ISO dates (YYYY-MM-DD), inclusive. */
+  updatedFrom?: string
+  updatedTo?: string
+  sort?: 'updated_at' | 'created_at' | 'title'
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export interface DocumentService {
+  list(params: DocumentListParams): Promise<Paginated<ExplanatoryNote>>
+  get(id: string): Promise<DocumentDetail>
+  create(input: { projectId: string; title?: string; schemaVersion?: string }): Promise<DocumentDetail>
+  /** Autosave. Rejects with ApiError('conflict') when baseRevision is stale. */
+  saveData(id: string, data: DocumentData, baseRevision: number): Promise<DocumentDetail>
+  update(id: string, patch: { title?: string; status?: DocumentStatus }): Promise<DocumentDetail>
+  remove(id: string): Promise<void>
+  versions(id: string): Promise<VersionMeta[]>
+  saveVersion(id: string, comment: string): Promise<VersionMeta>
+  diff(id: string, from: number, to: number | 'current'): Promise<Change[]>
+  restore(id: string, number: number): Promise<DocumentDetail>
+  /** Runs business rules + XSD check on the current data and stores the result. */
+  validate(id: string): Promise<ValidationResult>
+  /** Last stored result, or null if the document was never checked. */
+  validation(id: string): Promise<ValidationResult | null>
+  xml(id: string): Promise<XmlPreview>
+  /** Rejects with ApiError('validation_failed') while the document has errors. */
+  downloadXml(id: string, filename: string): Promise<void>
+  downloadReport(id: string): Promise<void>
+  /** Analyses an XML file without saving anything. The file travels as base64 so its own encoding is respected. */
+  importPreview(input: { contentBase64: string; filename: string; schemaVersion?: string }): Promise<ImportReport>
+  archive(id: string): Promise<DocumentDetail>
+  restoreFromArchive(id: string): Promise<DocumentDetail>
+  /** One action for many documents; every id succeeds or fails on its own. */
+  bulk(ids: string[], action: BulkAction): Promise<BulkResult>
+  /** Downloads a ZIP with the XML of every selected document that passes validation. */
+  bulkXml(ids: string[]): Promise<{ exported: number; skipped: number }>
+  authors(): Promise<Author[]>
+  importCreate(input: { contentBase64: string; filename: string; projectId: string; schemaVersion?: string; title?: string }): Promise<{ document: DocumentDetail; report: ImportReport }>
+}
+
+export interface SchemaUpload {
+  version: string
+  title: string
+  filename: string
+  content: string
+  changelog: string
+  compatibility: string
+  makeDefault: boolean
+}
+
+export interface SchemaService {
+  /** Active schemas; `includeInactive` is for super admins only. */
+  list(includeInactive?: boolean): Promise<SchemaInfo[]>
+  upload(input: SchemaUpload): Promise<SchemaInfo>
+  update(id: string, patch: Partial<Pick<SchemaInfo, 'title' | 'changelog' | 'compatibility' | 'isActive'>>): Promise<SchemaInfo>
+  makeDefault(id: string): Promise<SchemaInfo>
+  remove(id: string): Promise<void>
+  structure(id: string): Promise<StructureNode[]>
+  /** Triggers a browser download of the XSD file. */
+  download(id: string, filename: string): Promise<void>
 }
 
 export interface NotificationService {
@@ -97,6 +187,55 @@ const mockOrganizations: OrganizationService = {
   },
 }
 
+const mockProjects: ProjectService = {
+  async list({ q = '', status, constructionType, page = 1, pageSize = 20 }) {
+    await delay(200)
+    const needle = q.trim().toLowerCase()
+    const rows = mockProjectRows.filter(
+      (p) =>
+        (!needle || `${p.name} ${p.address} ${p.cadastralNumber} ${p.code}`.toLowerCase().includes(needle)) &&
+        (!status || p.status === status) &&
+        (!constructionType || p.constructionType === constructionType)
+    )
+    return { items: rows.slice((page - 1) * pageSize, page * pageSize), total: rows.length, page, pageSize }
+  },
+  async get(id) {
+    await delay(200)
+    const p = mockProjectRows.find((x) => x.id === id)
+    if (!p) throw new ApiError('not_found', 'Объект не найден')
+    return p
+  },
+  async create() {
+    throw new ApiError('not_implemented', 'В демо-режиме создание недоступно')
+  },
+  async update() {
+    throw new ApiError('not_implemented', 'В демо-режиме правка недоступна')
+  },
+  async remove() {
+    throw new ApiError('not_implemented', 'В демо-режиме удаление недоступно')
+  },
+}
+
+const demoOnly = async () => {
+  throw new ApiError('not_implemented', 'В демо-режиме (VITE_USE_MOCK) документы недоступны')
+}
+const mockDocuments: DocumentService = {
+  async list({ page = 1, pageSize = 20 }) {
+    return { items: [], total: 0, page, pageSize }
+  },
+  get: demoOnly, create: demoOnly, saveData: demoOnly, update: demoOnly, remove: demoOnly,
+  versions: demoOnly, saveVersion: demoOnly, diff: demoOnly, restore: demoOnly,
+  validate: demoOnly, validation: demoOnly, xml: demoOnly, downloadXml: demoOnly, downloadReport: demoOnly, importPreview: demoOnly, importCreate: demoOnly,
+  archive: demoOnly, restoreFromArchive: demoOnly, bulk: demoOnly, bulkXml: demoOnly, authors: async () => [],
+}
+
+const demoSchemas: SchemaService = {
+  async list() { return [] },
+  upload: demoOnly, update: demoOnly, makeDefault: demoOnly, remove: demoOnly, structure: demoOnly, download: demoOnly,
+}
+
+const mockSearch = { async global(): Promise<SearchResult> { return { projects: [], documents: [] } } }
+
 const mockNotifications: NotificationService = {
   async list() {
     await delay(200)
@@ -113,5 +252,9 @@ const useMock = import.meta.env.VITE_USE_MOCK === 'true'
 export const api = {
   auth: useMock ? mockAuth : httpAuth,
   organizations: useMock ? mockOrganizations : httpOrganizations,
+  projects: useMock ? mockProjects : httpProjects,
+  documents: useMock ? mockDocuments : httpDocuments,
+  schemas: useMock ? demoSchemas : httpSchemas,
+  search: useMock ? mockSearch : httpSearch,
   notifications: mockNotifications,
 }

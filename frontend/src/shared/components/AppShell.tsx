@@ -23,9 +23,12 @@ import {
   Gauge,
 } from 'lucide-react'
 import { navFor, type RouteDef } from '../app/routes'
-import { documents, notifications, organizations, projects, users } from '../mock/data'
+import { notifications, organizations, users } from '../mock/data'
 import { t } from '../i18n'
-import type { Role, Organization, User } from '../types'
+import type { Role, Organization, SearchResult, User } from '../types'
+import { useNavigate } from 'react-router-dom'
+import { api } from '../api'
+import { useDebounced } from '../app/useDebounced'
 import { Logo } from './Logo'
 import { cn } from './ui'
 
@@ -35,6 +38,8 @@ type Props = {
   /** Real session data; falls back to mock data when omitted. */
   user?: User
   organization?: Organization
+  /** Version of the default XML schema shown in the sidebar footer. */
+  defaultSchema?: string
   role: Role
   activeKey: string
   title: string
@@ -71,6 +76,7 @@ export function AppShell({
   onToggleTheme,
   user: userProp,
   organization,
+  defaultSchema,
   children,
 }: Props) {
   const [panel, setPanel] = useState<ShellPanel>(initialPanel)
@@ -172,7 +178,7 @@ export function AppShell({
       </nav>
 
       <div className="border-t border-border px-4 py-3 text-xs text-muted">
-        Схема по умолчанию · <span className="font-mono">01.05</span>
+        Схема по умолчанию · <span className="font-mono">{defaultSchema ?? '—'}</span>
       </div>
     </div>
   )
@@ -216,7 +222,7 @@ export function AppShell({
             <Menu className="size-5" />
           </button>
 
-          <GlobalSearch open={panel === 'search'} onOpen={() => setPanel('search')} onClose={() => setPanel('none')} onNavigate={onNavigate} />
+          <GlobalSearch open={panel === 'search'} onOpen={() => setPanel('search')} onClose={() => setPanel('none')} onNavigate={onNavigate} role={role} />
 
           <div className="ml-auto flex items-center gap-1">
             <div className="relative">
@@ -382,22 +388,64 @@ function GlobalSearch({
   open,
   onOpen,
   onClose,
-  onNavigate,
+  role,
 }: {
   open: boolean
   onOpen: () => void
   onClose: () => void
   onNavigate?: (key: string) => void
+  role: Role
 }) {
+  const nav = useNavigate()
   const [q, setQ] = useState('')
+  const dq = useDebounced(q, 250)
+  const [res, setRes] = useState<SearchResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const seq = useRef(0)
+
   useEffect(() => {
     if (open) inputRef.current?.focus()
   }, [open])
-  const needle = q.trim().toLowerCase()
-  const proj = projects.filter((p) => !needle || `${p.name} ${p.code} ${p.address}`.toLowerCase().includes(needle))
-  const docs = documents.filter((d) => !needle || d.title.toLowerCase().includes(needle))
-  const empty = proj.length === 0 && docs.length === 0
+
+  useEffect(() => {
+    if (dq.trim().length < 2) {
+      setRes(null)
+      setLoading(false)
+      return
+    }
+    const id = ++seq.current
+    setLoading(true)
+    api.search
+      .global(dq.trim())
+      .then((r) => id === seq.current && (setRes(r), setActive(0)))
+      .catch(() => id === seq.current && setRes({ projects: [], documents: [] }))
+      .finally(() => id === seq.current && setLoading(false))
+  }, [dq])
+
+  const editor = role !== 'expert'
+  const items = [
+    ...(res?.projects ?? []).map((p) => ({ key: `p${p.id}`, title: p.name, meta: `${p.code} · ${p.cadastralNumber}`, path: `/app/projects/${p.id}`, group: 'Объекты' })),
+    ...(res?.documents ?? []).map((d) => ({
+      key: `d${d.id}`, title: d.title, meta: `${d.projectName} · схема ${d.schemaVersion}`, group: 'Документы',
+      path: editor ? `/app/documents/${d.id}/edit` : `/app/documents/${d.id}/versions`,
+    })),
+  ]
+  const typed = q.trim().length >= 2
+  const go = (path: string) => {
+    onClose()
+    setQ('')
+    setRes(null)
+    inputRef.current?.blur()
+    nav(path)
+  }
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => Math.min(a + 1, items.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(a - 1, 0)) }
+    else if (e.key === 'Enter' && items[active]) { e.preventDefault(); go(items[active].path) }
+    else if (e.key === 'Escape') { onClose(); inputRef.current?.blur() }
+  }
 
   return (
     <div className="relative min-w-0 flex-1 sm:max-w-[480px]">
@@ -406,9 +454,15 @@ function GlobalSearch({
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-subtle" aria-hidden />
         <input
           ref={inputRef}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls="global-search-results"
+          aria-activedescendant={items[active] ? `gs-${items[active].key}` : undefined}
+          autoComplete="off"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={onOpen}
+          onKeyDown={onKeyDown}
           placeholder="Поиск объектов, документов, кадастровых номеров"
           className="h-9 w-full rounded-md border border-border bg-bg pl-9 pr-14 text-sm placeholder:text-subtle focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
         />
@@ -422,36 +476,34 @@ function GlobalSearch({
             {...pop}
             style={{ transformOrigin: 'top' }}
             className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-lg border border-border bg-surface shadow-lg shadow-black/10"
+            id="global-search-results"
             role="listbox"
           >
-            {empty ? (
-              <p className="px-4 py-6 text-center text-sm text-muted">Ничего не найдено по запросу «{q}»</p>
-            ) : (
+            {!typed && <p className="px-4 py-5 text-center text-sm text-muted">Введите название, адрес или кадастровый номер</p>}
+            {typed && loading && !res && <p className="px-4 py-5 text-center text-sm text-muted" role="status">Поиск…</p>}
+            {typed && res && items.length === 0 && <p className="px-4 py-6 text-center text-sm text-muted">Ничего не найдено по запросу «{q.trim()}»</p>}
+            {items.length > 0 && (
               <>
-                {proj.length > 0 && <p className="px-4 pb-1 pt-3 text-xs font-medium text-subtle">Объекты</p>}
-                {proj.map((p) => (
-                  <ResultRow key={p.id} title={p.name} meta={`${p.code} · ${p.cadastralNumber}`} onClick={() => (onClose(), onNavigate?.('projectDetails'))} />
+                {items.map((it, i) => (
+                  <React.Fragment key={it.key}>
+                    {(i === 0 || items[i - 1].group !== it.group) && <p className="px-4 pb-1 pt-3 text-xs font-medium text-subtle">{it.group}</p>}
+                    <button
+                      type="button" id={`gs-${it.key}`} role="option" aria-selected={i === active}
+                      onMouseEnter={() => setActive(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => go(it.path)}
+                      className={`block w-full px-4 py-2 text-left ${i === active ? 'bg-surface-2' : ''}`}
+                    >
+                      <span className="block truncate text-sm">{it.title}</span>
+                      <span className="block truncate font-mono text-xs text-muted">{it.meta}</span>
+                    </button>
+                  </React.Fragment>
                 ))}
-                {docs.length > 0 && <p className="px-4 pb-1 pt-3 text-xs font-medium text-subtle">Документы</p>}
-                {docs.map((d) => (
-                  <ResultRow key={d.id} title={d.title} meta={`Схема ${d.schemaVersion} · версия ${d.currentVersion}`} onClick={() => (onClose(), onNavigate?.('documentEditor'))} />
-                ))}
-                <div className="mt-2 border-t border-border px-4 py-2 text-xs text-subtle">Esc — закрыть</div>
+                <div className="mt-2 border-t border-border px-4 py-2 text-xs text-subtle">↑↓ — выбор · Enter — открыть · Esc — закрыть</div>
               </>
             )}
           </motion.div>
         )}
       </AnimatePresence>
     </div>
-  )
-}
-
-function ResultRow({ title, meta, onClick }: { title: string; meta: string; onClick: () => void }) {
-  return (
-    <button type="button" role="option" aria-selected={false} onClick={onClick} className="block w-full px-4 py-2 text-left hover:bg-surface-2">
-      <span className="block truncate text-sm">{title}</span>
-      <span className="block truncate font-mono text-xs text-muted">{meta}</span>
-    </button>
   )
 }
 

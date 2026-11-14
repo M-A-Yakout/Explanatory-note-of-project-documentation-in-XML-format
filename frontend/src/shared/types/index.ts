@@ -56,6 +56,8 @@ export interface Project {
   developer: string
   customer: string
   designer: string
+  functionalPurpose?: string
+  financingSource?: string
   status: ProjectStatus
   participantIds: string[]
   createdAt: string
@@ -73,9 +75,15 @@ export interface ExplanatoryNote {
   schemaVersion: string
   status: DocumentStatus
   authorId: string
+  projectName?: string
+  authorName?: string
+  revision?: number
   progress: number
   errorsCount: number
   warningsCount: number
+  validationStale?: boolean
+  archivedAt?: string | null
+  archivedByName?: string | null
   currentVersion: number
   createdAt: string
   updatedAt: string
@@ -171,4 +179,110 @@ export interface Paginated<T> {
   total: number
   page: number
   pageSize: number
+}
+
+// ---- document form model (mirrors backend app/document_data.py) ----
+export interface ObjectInfo {
+  name: string; address: string; cadastralNumber: string; constructionType: string
+  developer: string; customer: string; designer: string; functionalPurpose: string; financingSource: string
+}
+export interface TeiRow { id: string; name: string; unit: string; value: string }
+export interface CompositionItem { code: string; title: string; included: boolean; note: string }
+export interface NormRef { id: string; code: string; title: string; custom: boolean }
+export interface DocumentData {
+  object: ObjectInfo
+  tei: TeiRow[]
+  composition: CompositionItem[]
+  references: NormRef[]
+  additional: { notes: string }
+}
+export type SectionKey = 'object' | 'tei' | 'composition' | 'references' | 'additional'
+export interface DocumentDetail extends ExplanatoryNote {
+  revision: number
+  data: DocumentData
+  sections: Record<SectionKey, boolean>
+}
+export interface VersionMeta { number: number; authorId: string; authorName: string; comment: string; createdAt: string }
+export interface Change { path: string; kind: 'added' | 'removed' | 'changed'; before: unknown; after: unknown }
+
+// ---- XSD registry (backend /api/schemas) ----
+export interface SchemaInfo {
+  id: string
+  version: string
+  title: string
+  filename: string
+  checksum: string
+  sizeBytes: number
+  isActive: boolean
+  isDefault: boolean
+  changelog: string
+  compatibility: string
+  uploadedByName: string
+  documentsCount: number
+  createdAt: string
+  updatedAt: string
+}
+export interface StructureNode {
+  name: string
+  kind: 'element' | 'attribute'
+  type: string
+  required: boolean
+  repeatable: boolean
+  children: StructureNode[]
+}
+
+// ---- validation / XML (backend /api/documents/:id/validate, /xml) ----
+export interface DocIssue {
+  id: string
+  severity: 'error' | 'warning' | 'info'
+  source: 'business' | 'xsd'
+  code: string
+  message: string
+  /** Form field path, e.g. object.developer or tei[r2].value; null when it cannot be located. */
+  field: string | null
+  section: SectionKey | null
+  xpath: string | null
+  line: number | null
+}
+export interface ValidationResult {
+  issues: DocIssue[]
+  errors: number
+  warnings: number
+  infos: number
+  checkedAt: string
+  revision: number
+  schemaVersion: string
+  xmlValid: boolean
+  /** The document changed after this check. */
+  stale: boolean
+  status: DocumentStatus
+}
+export interface XmlPreview { xml: string; filename: string; sizeBytes: number; schemaVersion: string; xsdValid: boolean }
+
+// ---- XML import (backend /api/documents/import) ----
+export interface ImportEntry { xpath: string; element: string; status: 'skipped' | 'truncated'; message: string }
+export interface ImportReport {
+  filename: string
+  sizeBytes: number
+  detectedVersion: string | null
+  usedVersion: string
+  /** The version named in the file is not available: the default schema was used instead. */
+  schemaFallback: boolean
+  summary: { object: number; tei: number; composition: number; references: number; additional: boolean }
+  skipped: ImportEntry[]
+  skippedTotal: number
+  truncated: ImportEntry[]
+  truncatedTotal: number
+  xsdValid: boolean
+  xsdIssues: { code: string; message: string; line: number | null; xpath: string | null }[]
+  data: DocumentData
+}
+
+// ---- archive, bulk operations, search ----
+export type BulkAction = 'archive' | 'restore' | 'delete'
+export interface BulkResult { results: { id: string; ok: boolean; code?: string; message?: string }[]; okCount: number; failedCount: number }
+export interface Author { id: string; name: string }
+export interface SearchResult {
+  projects: { id: string; code: string; name: string; address: string; cadastralNumber: string }[]
+  documents: { id: string; title: string; projectName: string; status: DocumentStatus; schemaVersion: string }[]
 }

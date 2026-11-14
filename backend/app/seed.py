@@ -5,10 +5,14 @@ from .core.config import settings
 from .core.db import SessionLocal
 from .core.security import hash_password
 from .models import Organization, Role, User
+from .schema_registry import load_bundled
 
 
 def run() -> None:
     with SessionLocal() as db:
+        added = load_bundled(db)
+        if added:
+            print(f"Loaded {added} bundled XML schema(s)")
         if db.scalar(select(User).where(User.email == settings.seed_admin_email)):
             print("Super admin already exists")
             return

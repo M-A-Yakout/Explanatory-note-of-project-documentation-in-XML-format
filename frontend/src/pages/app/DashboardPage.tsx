@@ -23,10 +23,13 @@ type Props = Partial<typeof args> & {
   onToggleTheme?: () => void
   user?: User
   organization?: Organization
+  defaultSchema?: string
+  /** Real page content; the placeholder is shown when omitted. */
+  children?: React.ReactNode
 }
 
 export default function DashboardPage(props: Props) {
-  const { role, page, panel, theme, onNavigate, onLogout, onToggleTheme, user, organization } = { ...args, ...props }
+  const { role, page, panel, theme, onNavigate, onLogout, onToggleTheme, user, organization, defaultSchema, children } = { ...args, ...props }
   const route = findRoute(page) ?? routes[0]
   const group = { public: 1, common: 2, projects: 3, documents: 4, admin: 5 }[route.group]
 
@@ -42,8 +45,9 @@ export default function DashboardPage(props: Props) {
       onToggleTheme={onToggleTheme}
       user={user}
       organization={organization}
+      defaultSchema={defaultSchema}
     >
-      {/* Content slot: every page of groups 2–5 renders here. */}
+      {children ?? (
       <section
         aria-label="Область содержимого"
         className="flex min-h-[420px] flex-col items-start justify-center rounded-lg border border-dashed border-border-strong px-6 py-12 sm:px-10"
@@ -61,6 +65,7 @@ export default function DashboardPage(props: Props) {
           </span>
         </p>
       </section>
+      )}
     </AppShell>
   )
 }
