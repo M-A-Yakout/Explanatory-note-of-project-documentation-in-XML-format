@@ -36,15 +36,16 @@ class ImportFailure(ValueError):
         self.code, self.message = code, message
 
 
-def decode_payload(b64: str) -> bytes:
-    if len(b64) > settings.max_xml_mb * 1024 * 1024 * 4 // 3 + 8:
-        raise ImportFailure("too_large", f"Файл больше {settings.max_xml_mb} МБ")
+def decode_payload(b64: str, max_mb: int | None = None) -> bytes:
+    max_mb = settings.max_xml_mb if max_mb is None else max_mb
+    if len(b64) > max_mb * 1024 * 1024 * 4 // 3 + 8:
+        raise ImportFailure("too_large", f"Файл больше {max_mb} МБ")
     try:
         raw = base64.b64decode(b64, validate=True)
     except (binascii.Error, ValueError):
         raise ImportFailure("invalid_payload", "Не удалось прочитать файл")
-    if len(raw) > settings.max_xml_mb * 1024 * 1024:
-        raise ImportFailure("too_large", f"Файл больше {settings.max_xml_mb} МБ")
+    if len(raw) > max_mb * 1024 * 1024:
+        raise ImportFailure("too_large", f"Файл больше {max_mb} МБ")
     if not raw.strip():
         raise ImportFailure("invalid_xml", "Файл пустой")
     return raw

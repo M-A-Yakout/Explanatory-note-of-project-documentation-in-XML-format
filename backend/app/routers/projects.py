@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
+from ..audit import audit
 from ..core.errors import api_error
 from ..deps import get_current_user, require_roles
 from ..models import ConstructionType, Document, Project, ProjectStatus, Role, User
@@ -55,11 +56,15 @@ def list_projects(
 
 @router.post("", status_code=201, response_model=ProjectOut, response_model_by_alias=True)
 def create_project(body: ProjectIn, db: Session = Depends(get_db), user: User = Depends(require_roles(*EDITORS))):
+    used = db.scalar(select(func.count()).select_from(Project).where(Project.organization_id == user.organization_id)) or 0
+    if used >= user.organization.max_projects:
+        raise api_error(409, "limit_reached", f"Достигнут лимит объектов организации ({user.organization.max_projects})")
     p = Project(**body.model_dump(), organization_id=user.organization_id, created_by_id=user.id)
     db.add(p)
     db.flush()
     p.code = f"ПР-{p.created_at.year if p.created_at else 2026}-{p.id:04d}"
     p.refresh_search()
+    audit(db, "project.created", user=user, entity_type="project", entity_id=p.id, summary=f"{p.code}: {p.name}")
     db.commit()
     db.refresh(p)
     return project_out(p)
@@ -92,6 +97,7 @@ def delete_project(project_id: int, db: Session = Depends(get_db), user: User = 
     p = _get_own(db, user, project_id)
     if db.scalar(select(func.count()).select_from(Document).where(Document.project_id == p.id)):
         raise api_error(409, "has_documents", "Нельзя удалить объект, у которого есть документы")
+    audit(db, "project.deleted", user=user, entity_type="project", entity_id=p.id, summary=f"{p.code}: {p.name}")
     db.delete(p)
     db.commit()
     return Response(status_code=204)

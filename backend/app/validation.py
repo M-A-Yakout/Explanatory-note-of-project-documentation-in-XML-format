@@ -43,7 +43,7 @@ def _num(x: float) -> str:
     return f"{x:,.2f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")
 
 
-def business_rules(data: dict) -> list[dict]:
+def business_rules(data: dict, warn_outdated: bool = True) -> list[dict]:
     out = _Issues()
     obj = data.get("object", {})
 
@@ -96,7 +96,7 @@ def business_rules(data: dict) -> list[dict]:
         out.add("error", "business", "BR-030", "Не указано ни одной нормативной ссылки", "references")
     for ref in refs:
         code = str(ref.get("code", "")).strip()
-        if code in OUTDATED:
+        if warn_outdated and code in OUTDATED:
             out.add("warning", "business", "BR-031", f"Ссылка {code} устарела, актуальная редакция: {OUTDATED[code]}", f"references[{ref.get('id')}]")
 
     if not str(data.get("additional", {}).get("notes", "")).strip():
@@ -115,10 +115,11 @@ def xsd_issues(schema: etree.XMLSchema, xml: bytes, fieldmap: dict[str, str]) ->
     return list(out)
 
 
-def validate_document(doc, schema_row) -> dict:
+def validate_document(doc, schema_row, opts: dict | None = None) -> dict:
     """Run both layers on the document's current data. XSD issues that repeat a business error on the same field are dropped."""
     built = build_xml(doc.data, doc.schema_version, schema_row.content)
-    biz = business_rules(doc.data)
+    opts = opts or {}
+    biz = business_rules(doc.data, warn_outdated=opts.get("warn_outdated", True))
     bad_fields = {i["field"] for i in biz if i["severity"] == "error" and i["field"]}
     raw_xsd = xsd_issues(compiled(schema_row.checksum, schema_row.content), built.xml, built.fieldmap)
     xsd = [i for i in raw_xsd if i["field"] not in bad_fields]
@@ -128,6 +129,8 @@ def validate_document(doc, schema_row) -> dict:
     issues.sort(key=lambda i: (order[i["severity"]], i["source"] != "business"))
     return {
         "issues": issues, "errors": count("error"), "warnings": count("warning"), "infos": count("info"),
+        # what actually blocks export / the "validated" status (warnings only when the admin enabled that)
+        "blocking": count("error") + (count("warning") if opts.get("block_on_warnings") else 0),
         "checkedAt": datetime.now(timezone.utc).isoformat(), "revision": doc.revision, "schemaVersion": doc.schema_version,
         "xmlValid": not raw_xsd,  # real XSD validity, before de-duplication
     }

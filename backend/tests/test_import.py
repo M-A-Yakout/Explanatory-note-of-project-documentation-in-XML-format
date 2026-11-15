@@ -2,7 +2,6 @@ import base64
 
 from lxml import etree
 
-from app.core.config import settings
 from app.models import Role
 
 from .test_projects import PROJECT, auth
@@ -132,14 +131,18 @@ def test_rejects_bad_files(client):
     assert preview(client, h, bomb).json()["detail"]["code"] == "forbidden_dtd"
 
 
-def test_size_limit(client):
+def test_size_limit_comes_from_the_admin_setting(client):
+    from .test_schemas import admin
+
     h = auth(client)
-    old = settings.max_xml_mb
-    settings.max_xml_mb = 0
-    try:
-        assert preview(client, h, SIMPLE).json()["detail"]["code"] == "too_large"
-    finally:
-        settings.max_xml_mb = old
+    a = admin(client)
+    cfg = client.get("/api/settings", headers=a).json()
+    client.put("/api/settings", json={**cfg, "maxXmlMb": 1}, headers=a)
+    big = SIMPLE.replace("</ExplanatoryNote>", "<!--" + "x" * (1024 * 1024 + 10) + "--></ExplanatoryNote>")
+    r = preview(client, h, big)
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "too_large" and "1 МБ" in r.json()["detail"]["message"]
+    client.put("/api/settings", json={**cfg, "maxXmlMb": 5}, headers=a)
+    assert preview(client, h, big).status_code == 200
 
 
 def test_long_values_and_row_limits_are_truncated_and_reported(client):

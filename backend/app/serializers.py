@@ -4,7 +4,8 @@ from .schemas import OrganizationOut, UserOut
 
 def org_out(o: Organization) -> OrganizationOut:
     return OrganizationOut(
-        id=str(o.id), name=o.name, short_name=o.name, inn=o.inn or "",
+        id=str(o.id), name=o.name, short_name=o.name, inn=o.inn or "", ogrn=o.ogrn, address=o.address,
+        limits={"maxUsers": o.max_users, "maxProjects": o.max_projects, "maxStorageMb": 0},
         members_count=len(o.users), created_at=o.created_at, is_active=o.is_active,
     )
 

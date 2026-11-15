@@ -145,6 +145,38 @@ export function ConfirmTokenRoute() {
   return <ConfirmEmail mode={mode} email={email} onLogin={() => nav('/login')} onContinue={() => nav('/login')} />
 }
 
+/** /invite/:token — an invited person chooses a name and password. */
+export function InviteRoute() {
+  const nav = useNavigate()
+  const { token = '' } = useParams()
+  const { login } = useAuth()
+  const [info, setInfo] = useState<{ email: string } | null>(null)
+  const [mode, setMode] = useState<'invite' | 'inviteAccepting' | 'expired'>('invite')
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    api.auth.inviteInfo(token).then(setInfo).catch(() => setMode('expired')).finally(() => setLoaded(true))
+  }, [token])
+  if (!loaded) return null
+  return (
+    <ConfirmEmail
+      mode={mode}
+      email={info?.email}
+      onLogin={() => nav('/login')}
+      onContinue={() => nav('/login')}
+      onAccept={async (v) => {
+        setMode('inviteAccepting')
+        try {
+          await api.auth.acceptInvite(token, { fullName: v.fullName, password: v.password })
+          await login(info!.email, v.password)  // opens the session in the app
+          nav('/app', { replace: true })
+        } catch {
+          setMode('expired')
+        }
+      }}
+    />
+  )
+}
+
 export function ErrorRoute({ code }: { code: '403' | '404' }) {
   const nav = useNavigate()
   const path = useLocation().pathname

@@ -9,6 +9,7 @@ import {
   ConfirmTokenRoute,
   ErrorRoute,
   ForgotRoute,
+  InviteRoute,
   LandingRoute,
   LoginRoute,
   RegisterRoute,
@@ -33,6 +34,7 @@ export default function App() {
                 <Route path="/register" element={<RegisterRoute />} />
                 <Route path="/forgot-password" element={<ForgotRoute />} />
                 <Route path="/reset-password/:token" element={<ResetRoute />} />
+                <Route path="/invite/:token" element={<InviteRoute />} />
                 <Route path="/confirm" element={<ConfirmSentRoute />} />
                 <Route path="/confirm/:token" element={<ConfirmTokenRoute />} />
                 <Route path="/403" element={<ErrorRoute code="403" />} />

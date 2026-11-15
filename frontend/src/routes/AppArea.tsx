@@ -38,7 +38,7 @@ export function AppArea({ theme, onToggleTheme }: { theme: 'light' | 'dark'; onT
   if (!guard(def, session.user.role).ok) return <Navigate to="/403" replace />
 
   const params = matchPath({ path: def.path, end: true }, pathname)?.params ?? {}
-  const content = pageFor(def.key, params, session.user.role)
+  const content = pageFor(def.key, params, session.user.role, session.user.fullName)
 
   return (
     <DashboardPage

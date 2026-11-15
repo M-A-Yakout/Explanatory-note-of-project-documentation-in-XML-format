@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.db import Base
@@ -19,6 +19,10 @@ class Organization(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), unique=True)
     inn: Mapped[str | None] = mapped_column(String(12))
+    ogrn: Mapped[str] = mapped_column(String(15), default="", server_default="")
+    address: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    max_users: Mapped[int] = mapped_column(Integer, default=50, server_default="50")
+    max_projects: Mapped[int] = mapped_column(Integer, default=200, server_default="200")
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     users: Mapped[list["User"]] = relationship(back_populates="organization")
@@ -34,9 +38,16 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     email_confirmed: Mapped[bool] = mapped_column(default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    position: Mapped[str] = mapped_column(String(255), default="", server_default="")
+    phone: Mapped[str] = mapped_column(String(50), default="", server_default="")
+    prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # notification preferences
+    search_text: Mapped[str] = mapped_column(Text, default="", server_default="")  # lower-cased name + e-mail
     organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     organization: Mapped[Organization | None] = relationship(back_populates="users")
+
+    def refresh_search(self) -> None:
+        self.search_text = f"{self.full_name} {self.email}".lower()
 
 
 class ConstructionType(str, enum.Enum):
@@ -145,3 +156,52 @@ class XmlSchema(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     uploaded_by: Mapped["User | None"] = relationship()
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_log"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    organization_id: Mapped[int | None] = mapped_column(ForeignKey("organizations.id"), index=True, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    user_name: Mapped[str] = mapped_column(String(255), default="", server_default="")  # snapshot: survives user changes
+    action: Mapped[str] = mapped_column(String(50), index=True)
+    entity_type: Mapped[str] = mapped_column(String(30), default="", server_default="")
+    entity_id: Mapped[str] = mapped_column(String(40), default="", server_default="")
+    summary: Mapped[str] = mapped_column(String(500), default="", server_default="")
+    result: Mapped[str] = mapped_column(String(10), default="ok", server_default="ok")
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    search_text: Mapped[str] = mapped_column(Text, default="", server_default="")  # lower-cased user + summary + action
+
+
+class Invitation(Base):
+    __tablename__ = "invitations"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), index=True)
+    email: Mapped[str] = mapped_column(String(255), index=True)
+    role: Mapped[Role] = mapped_column(Enum(Role))
+    nonce: Mapped[str] = mapped_column(String(32), default="", server_default="")  # binds the e-mailed link to THIS invitation, not to a reusable row id
+    invited_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    organization: Mapped[Organization] = relationship()
+    invited_by: Mapped["User | None"] = relationship(foreign_keys=[invited_by_id])
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(300))
+    body: Mapped[str] = mapped_column(Text, default="", server_default="")
+    link: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_read: Mapped[bool] = mapped_column(default=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSON)

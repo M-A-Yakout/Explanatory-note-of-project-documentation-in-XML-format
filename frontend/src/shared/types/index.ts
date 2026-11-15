@@ -253,6 +253,8 @@ export interface ValidationResult {
   revision: number
   schemaVersion: string
   xmlValid: boolean
+  /** Number of findings that block export (errors, plus warnings when the admin enabled that). */
+  blocking: number
   /** The document changed after this check. */
   stale: boolean
   status: DocumentStatus
@@ -286,3 +288,48 @@ export interface SearchResult {
   projects: { id: string; code: string; name: string; address: string; cadastralNumber: string }[]
   documents: { id: string; title: string; projectName: string; status: DocumentStatus; schemaVersion: string }[]
 }
+
+// ---- administration (backend /api/users, /audit, /stats, /settings, /notifications) ----
+export interface Prefs { validation: boolean; versions: boolean; invitations: boolean; email: boolean }
+export interface Profile {
+  id: string; fullName: string; email: string; role: Role; position: string; phone: string
+  organizationName: string; prefs: Prefs; createdAt: string; lastLoginAt: string | null
+}
+export interface UserAdmin {
+  id: string; fullName: string; email: string; role: Role; status: 'active' | 'blocked'
+  organizationId: string; organizationName: string; emailConfirmed: boolean; createdAt: string; lastLoginAt: string | null
+}
+export interface InvitationInfo {
+  id: string; email: string; role: Role; organizationId: string; organizationName: string
+  invitedByName: string; expiresAt: string; createdAt: string
+}
+export interface OrgAdmin {
+  id: string; name: string; inn: string; ogrn: string; address: string; maxUsers: number; maxProjects: number
+  usersCount: number; projectsCount: number; documentsCount: number; isActive: boolean; createdAt: string
+}
+export interface AuditEntry {
+  id: string; createdAt: string; userId: string | null; userName: string; organizationId: string | null; organizationName: string
+  action: string; entityType: string; entityId: string; summary: string; result: 'ok' | 'denied'; ip: string | null
+}
+export interface Notice { id: string; kind: string; title: string; body: string; link: string | null; read: boolean; createdAt: string }
+export interface DashboardStats {
+  documentsByStatus: Record<DocumentStatus, number>
+  errors: number; warnings: number; staleChecks: number; unchecked: number
+  projectsTotal: number; projectsActive: number; myDrafts: number
+  recent: ExplanatoryNote[]
+}
+export interface AdminStats {
+  usersTotal: number; usersActive: number; organizationsTotal: number; organizationsActive: number
+  projectsTotal: number; documentsTotal: number; documentsArchived: number
+  weeklyDocuments: { weekStart: string; count: number }[]
+  recentAudit: AuditEntry[]
+}
+export interface EmailTemplate { subject: string; body: string }
+export interface SystemSettings {
+  maxXmlMb: number
+  requireEmailConfirmation: boolean
+  blockExportOnWarnings: boolean
+  warnOutdatedReferences: boolean
+  emailTemplates: { confirm: EmailTemplate; invite: EmailTemplate; reset: EmailTemplate }
+}
+export interface Page<T> { items: T[]; total: number; page: number; pageSize: number }

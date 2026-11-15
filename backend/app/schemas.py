@@ -313,6 +313,7 @@ class ValidationOut(CamelModel):
     revision: int
     schema_version: str
     xml_valid: bool
+    blocking: int = 0
     stale: bool = False
     status: DocumentStatus
 

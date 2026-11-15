@@ -64,6 +64,8 @@ export const downloadFile = async (path: string, filename: string): Promise<void
   await fetchDownload(path, filename)
 }
 
+export const downloadFileWithQuery = downloadFile
+
 export const httpAuth: AuthService = {
   async login(email, password) {
     const s = await request<Session>('/auth/login', { method: 'POST', body: { email, password } })
@@ -82,9 +84,12 @@ export const httpAuth: AuthService = {
   async confirmEmail(token) {
     return request<{ email: string }>('/auth/confirm-email', { method: 'POST', body: { token } })
   },
-  async acceptInvite() {
-    throw new ApiError('not_implemented', 'Приглашения появятся в части 9')
+  async acceptInvite(token, payload) {
+    const s = await request<Session>('/auth/accept-invite', { method: 'POST', body: { token, ...payload } })
+    tokenStore.set(s.token)
+    return s
   },
+  inviteInfo: (token) => request(`/auth/invite-info?token=${encodeURIComponent(token)}`),
   async logout() {
     tokenStore.clear()
   },

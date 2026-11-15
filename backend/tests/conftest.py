@@ -43,3 +43,19 @@ PASSWORD = "StrongPass2026"
 def register_payload(email="anna@psi.ru", org=None):
     org = org or {"mode": "create", "name": "ПроектСтрой", "inn": "7701234567"}
     return {"fullName": "Ковалёва Анна", "email": email, "password": PASSWORD, "organization": org}
+
+
+@pytest.fixture()
+def outbox(monkeypatch):
+    """Captures every e-mail the app would send."""
+    box: list[dict] = []
+
+    def fake(to, subject, body):
+        box.append({"to": to, "subject": subject, "body": body})
+
+    import app.routers.auth as auth_router
+    import app.routers.users as users_router
+
+    monkeypatch.setattr(auth_router, "send_email", fake)
+    monkeypatch.setattr(users_router, "send_email", fake)
+    return box

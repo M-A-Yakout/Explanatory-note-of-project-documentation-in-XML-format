@@ -20,7 +20,7 @@ def get_current_user(
     except TokenError as e:
         raise api_error(401, "token_expired" if e.expired else "unauthorized", "Сессия недействительна")
     user = db.get(User, user_id)
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or (user.organization and not user.organization.is_active):
         raise api_error(401, "unauthorized", "Сессия недействительна")
     return user
 

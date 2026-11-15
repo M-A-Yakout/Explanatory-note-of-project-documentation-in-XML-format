@@ -5,7 +5,8 @@ from fastapi.responses import JSONResponse
 
 from . import models  # noqa: F401  (register tables for Alembic)
 from .core.config import settings
-from .routers import auth, health, organizations, projects, documents, xml_schemas, search
+from .routers import auth, health, organizations, projects, documents, xml_schemas, search, users, audit, notifications, stats
+from .routers import settings as settings_router
 
 app = FastAPI(title="ПЗ Генератор API", version="0.2.0")
 app.add_middleware(
@@ -20,5 +21,5 @@ async def validation_handler(_, exc: RequestValidationError):
     return JSONResponse(status_code=422, content={"detail": {"code": "validation", "message": "Некорректные данные", "fields": fields}})
 
 
-for r in (health.router, auth.router, organizations.router, projects.router, documents.router, xml_schemas.router, search.router):
+for r in (health.router, auth.router, organizations.router, projects.router, documents.router, xml_schemas.router, search.router, users.router, audit.router, notifications.router, settings_router.router, stats.router):
     app.include_router(r, prefix="/api")

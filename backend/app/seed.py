@@ -17,11 +17,13 @@ def run() -> None:
             print("Super admin already exists")
             return
         org = db.scalar(select(Organization).where(Organization.name == "ИнПАД")) or Organization(name="ИнПАД", inn="7714765432")
-        db.add(User(
+        admin = User(
             email=settings.seed_admin_email, full_name="Кузнецов Даниил Сергеевич",
             password_hash=hash_password(settings.seed_admin_password), role=Role.super_admin,
             organization=org, email_confirmed=True,
-        ))
+        )
+        admin.refresh_search()
+        db.add(admin)
         db.commit()
         print(f"Created super admin {settings.seed_admin_email}")
 

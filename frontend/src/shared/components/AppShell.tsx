@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   Archive,
@@ -23,9 +23,10 @@ import {
   Gauge,
 } from 'lucide-react'
 import { navFor, type RouteDef } from '../app/routes'
-import { notifications, organizations, users } from '../mock/data'
+import { organizations, users } from '../mock/data'
 import { t } from '../i18n'
-import type { Role, Organization, SearchResult, User } from '../types'
+import type { Notice, Role, Organization, SearchResult, User } from '../types'
+import { noticeLink } from '../app/labels'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useDebounced } from '../app/useDebounced'
@@ -85,10 +86,33 @@ export function AppShell({
   const user = userProp ?? users.find((u) => u.role === role) ?? users[0]
   const org = organization ?? organizations.find((o) => o.id === orgId)!
   const myOrgs = organization ? [organization] : role === 'super_admin' ? organizations : organizations.filter((o) => user.organizationIds.includes(o.id))
-  const unread = notifications.filter((n) => !n.read).length
+  const navigate = useNavigate()
+  const [notices, setNotices] = useState<Notice[]>([])
+  const [unread, setUnread] = useState(0)
+  const refreshNotices = useCallback((withList = false) => {
+    if (withList) api.notices.list({ pageSize: 6 }).then((r) => { setNotices(r.items); setUnread(r.unread) }).catch(() => {})
+    else api.notices.unreadCount().then(setUnread).catch(() => {})
+  }, [])
   const toggle = (p: ShellPanel) => setPanel((cur) => (cur === p ? 'none' : p))
 
   useEffect(() => setPanel(initialPanel), [initialPanel])
+  // unread badge: every minute and whenever another part of the app changes notifications
+  useEffect(() => {
+    refreshNotices()
+    const t = setInterval(() => refreshNotices(), 60_000)
+    const h = () => refreshNotices(panel === 'notifications')
+    window.addEventListener('pz:notices-changed', h)
+    return () => { clearInterval(t); window.removeEventListener('pz:notices-changed', h) }
+  }, [refreshNotices, panel])
+  useEffect(() => { if (panel === 'notifications') refreshNotices(true) }, [panel, refreshNotices])
+  const openNotice = async (n: Notice) => {
+    if (!n.read) await api.notices.markRead(n.id).catch(() => {})
+    setPanel('none')
+    refreshNotices()
+    const link = noticeLink(role, n.link)
+    if (link) navigate(link)
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -249,18 +273,20 @@ export function AppShell({
                   >
                     <div className="flex items-center justify-between border-b border-border px-4 py-3">
                       <p className="text-sm font-semibold">Уведомления</p>
-                      <button type="button" className="text-xs font-medium text-primary hover:underline">
+                      <button type="button" disabled={unread === 0} onClick={() => api.notices.readAll().then(() => refreshNotices(true)).catch(() => {})}
+                        className="text-xs font-medium text-primary hover:underline disabled:opacity-40 disabled:no-underline">
                         Отметить все прочитанными
                       </button>
                     </div>
                     <ul className="max-h-80 overflow-y-auto">
-                      {notifications.map((n) => (
+                      {notices.length === 0 && <li className="px-4 py-8 text-center text-sm text-muted">Уведомлений пока нет</li>}
+                      {notices.map((n) => (
                         <li key={n.id} className="border-b border-border last:border-0">
-                          <button type="button" className="flex w-full gap-3 px-4 py-3 text-left hover:bg-surface-2">
+                          <button type="button" onClick={() => openNotice(n)} className="flex w-full gap-3 px-4 py-3 text-left hover:bg-surface-2">
                             <span className={cn('mt-1.5 size-2 shrink-0 rounded-full', n.read ? 'bg-transparent' : 'bg-primary')} aria-hidden />
                             <span className="min-w-0">
-                              <span className="block text-sm font-medium">{n.title}</span>
-                              <span className="mt-0.5 block text-sm text-muted">{n.body}</span>
+                              <span className={cn('block text-sm', !n.read && 'font-medium')}>{n.title}</span>
+                              {n.body && <span className="mt-0.5 block text-sm text-muted">{n.body}</span>}
                               <span className="mt-1 block text-xs text-subtle">{formatDate(n.createdAt)}</span>
                             </span>
                           </button>

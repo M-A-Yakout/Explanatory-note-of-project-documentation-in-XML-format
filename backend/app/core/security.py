@@ -34,9 +34,21 @@ class TokenError(Exception):
         self.expired = expired
 
 
-def create_token(subject: int, purpose: str, minutes: int) -> str:
+def create_token(subject: int, purpose: str, minutes: int, **claims: str) -> str:
     exp = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-    return jwt.encode({"sub": str(subject), "purpose": purpose, "exp": exp}, settings.secret_key, algorithm="HS256")
+    return jwt.encode({"sub": str(subject), "purpose": purpose, "exp": exp, **claims}, settings.secret_key, algorithm="HS256")
+
+
+def decode_payload(token: str, purpose: str) -> dict:
+    try:
+        data = jwt.decode(token, settings.secret_key, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        raise TokenError(expired=True)
+    except jwt.PyJWTError:
+        raise TokenError()
+    if data.get("purpose") != purpose:
+        raise TokenError()
+    return data
 
 
 def decode_token(token: str, purpose: str) -> int:

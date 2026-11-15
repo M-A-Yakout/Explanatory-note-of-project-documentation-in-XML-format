@@ -3,6 +3,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..core.db import get_db
+from ..audit import audit
 from ..core.errors import api_error
 from ..deps import get_current_user, require_roles
 from ..models import Document, Role, User, XmlSchema
@@ -62,44 +63,50 @@ def upload_schema(body: SchemaCreate, db: Session = Depends(get_db), user: User 
     if first or body.make_default:
         db.execute(update(XmlSchema).values(is_default=False))
         s.is_default = True
+    audit(db, "schema.uploaded", user=user, entity_type="schema", entity_id=s.id, summary=f"Схема {s.version}: {s.filename}")
     db.commit()
     db.refresh(s)
     return _out(db, s)
 
 
 @router.patch("/{schema_id}", response_model=SchemaOut, response_model_by_alias=True)
-def patch_schema(schema_id: int, body: SchemaPatch, db: Session = Depends(get_db), _: User = Depends(ADMIN)):
+def patch_schema(schema_id: int, body: SchemaPatch, db: Session = Depends(get_db), actor: User = Depends(ADMIN)):
     s = _get(db, schema_id)
     if body.is_active is False and s.is_default:
         raise api_error(409, "default_schema", "Нельзя отключить схему по умолчанию: сначала назначьте другую")
+    before = s.is_active
     for k in ("title", "changelog", "compatibility", "is_active"):
         v = getattr(body, k)
         if v is not None:
             setattr(s, k, v)
+    audit(db, "schema.activated" if (not before and s.is_active) else "schema.deactivated" if (before and not s.is_active) else "schema.updated",
+          user=actor, org_id=None, entity_type="schema", entity_id=s.id, summary=f"Схема {s.version}")
     db.commit()
     db.refresh(s)
     return _out(db, s)
 
 
 @router.post("/{schema_id}/default", response_model=SchemaOut, response_model_by_alias=True)
-def make_default(schema_id: int, db: Session = Depends(get_db), _: User = Depends(ADMIN)):
+def make_default(schema_id: int, db: Session = Depends(get_db), actor: User = Depends(ADMIN)):
     s = _get(db, schema_id)
     if not s.is_active:
         raise api_error(409, "inactive_schema", "Сначала активируйте схему")
     db.execute(update(XmlSchema).values(is_default=False))
     s.is_default = True
+    audit(db, "schema.default_changed", user=actor, entity_type="schema", entity_id=s.id, summary=f"По умолчанию: {s.version}")
     db.commit()
     db.refresh(s)
     return _out(db, s)
 
 
 @router.delete("/{schema_id}", status_code=204)
-def delete_schema(schema_id: int, db: Session = Depends(get_db), _: User = Depends(ADMIN)):
+def delete_schema(schema_id: int, db: Session = Depends(get_db), actor: User = Depends(ADMIN)):
     s = _get(db, schema_id)
     if s.is_default:
         raise api_error(409, "default_schema", "Нельзя удалить схему по умолчанию")
     if _out(db, s).documents_count:
         raise api_error(409, "in_use", "Схема используется в документах: её можно только отключить")
+    audit(db, "schema.deleted", user=actor, entity_type="schema", entity_id=s.id, summary=f"Схема {s.version}")
     db.delete(s)
     db.commit()
     return Response(status_code=204)

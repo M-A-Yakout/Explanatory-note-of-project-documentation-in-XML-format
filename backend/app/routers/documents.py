@@ -9,7 +9,10 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from ..core.db import get_db
+from ..audit import audit
 from ..core.errors import api_error
+from ..notify import notify
+from ..settings_store import get_settings
 from ..deps import get_current_user, require_roles
 from ..document_data import DocumentData, diff, initial_data
 from ..models import Document, DocumentStatus, DocumentVersion, Project, Role, User, XmlSchema
@@ -25,6 +28,15 @@ router = APIRouter(prefix="/documents", tags=["documents"])
 EDITORS = (Role.super_admin, Role.org_admin, Role.designer)
 ADMINS = (Role.super_admin, Role.org_admin)
 SORTS = {"updated_at": Document.updated_at, "created_at": Document.created_at, "title": Document.title}
+
+
+def _opts(db: Session) -> dict:
+    cfg = get_settings(db)
+    return {"warn_outdated": cfg["warnOutdatedReferences"], "block_on_warnings": cfg["blockExportOnWarnings"]}
+
+
+def _doc_link(d: Document, page: str = "") -> str:
+    return f"/app/documents/{d.id}{page}"
 
 
 def _get_own(db: Session, user: User, doc_id: int) -> Document:
@@ -75,9 +87,9 @@ def list_documents(
     if author_id:
         cond.append(Document.author_id == author_id)
     if updated_from:
-        cond.append(Document.updated_at >= datetime.combine(updated_from, time.min))
+        cond.append(Document.updated_at >= datetime.combine(updated_from, time.min, tzinfo=timezone.utc))
     if updated_to:  # inclusive day
-        cond.append(Document.updated_at < datetime.combine(updated_to + timedelta(days=1), time.min))
+        cond.append(Document.updated_at < datetime.combine(updated_to + timedelta(days=1), time.min, tzinfo=timezone.utc))
     total = db.scalar(select(func.count()).select_from(Document).where(*cond)) or 0
     col = SORTS[sort]
     stmt = (select(Document).where(*cond).order_by(col.asc() if order == "asc" else col.desc(), Document.id.desc())
@@ -107,12 +119,13 @@ def create_document(body: DocumentCreate, db: Session = Depends(get_db), user: U
     db.add(d)
     db.flush()
     _snapshot(db, d, user, "Документ создан")
+    audit(db, "document.created", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title} (схема {d.schema_version})")
     db.commit()
     return doc_out(d, detail=True)
 
 
 # ---------------- archive / restore / delete (single + bulk share these) ----------------
-def _archive(d: Document, user: User) -> None:
+def _archive(db: Session, d: Document, user: User) -> None:
     if d.status == DocumentStatus.archived:
         raise api_error(409, "already_archived", "Документ уже в архиве")
     d.status_before_archive = d.status.value
@@ -120,9 +133,11 @@ def _archive(d: Document, user: User) -> None:
     d.archived_at = datetime.now(timezone.utc)
     d.archived_by_id = user.id
     d.archived_by = user
+    audit(db, "document.archived", user=user, entity_type="document", entity_id=d.id, summary=d.title)
+    notify(db, d.author, "archive", f"Документ перемещён в архив: {d.title}", f"Архивировал(а): {user.full_name}", _doc_link(d, "/versions"), actor=user)
 
 
-def _restore(d: Document) -> None:
+def _restore(db: Session, d: Document, user: User) -> None:
     if d.status != DocumentStatus.archived:
         raise api_error(409, "not_archived", "Документ не находится в архиве")
     before = DocumentStatus(d.status_before_archive) if d.status_before_archive else DocumentStatus.draft
@@ -131,11 +146,14 @@ def _restore(d: Document) -> None:
     d.status = DocumentStatus.draft if before == DocumentStatus.validated and stale else before
     d.archived_at = d.archived_by_id = d.status_before_archive = None
     d.archived_by = None
+    audit(db, "document.restored", user=user, entity_type="document", entity_id=d.id, summary=d.title)
+    notify(db, d.author, "archive", f"Документ восстановлен из архива: {d.title}", f"Восстановил(а): {user.full_name}", _doc_link(d, "/edit"), actor=user)
 
 
-def _delete(db: Session, d: Document) -> None:
+def _delete(db: Session, d: Document, user: User) -> None:
     if d.status != DocumentStatus.archived:
         raise api_error(409, "not_archived", "Удалить можно только документ из архива")
+    audit(db, "document.deleted", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title} — удалён навсегда")
     db.query(DocumentVersion).filter(DocumentVersion.document_id == d.id).delete()
     db.delete(d)
 
@@ -143,7 +161,7 @@ def _delete(db: Session, d: Document) -> None:
 @router.post("/{doc_id}/archive", response_model=DocumentDetail, response_model_by_alias=True)
 def archive_document(doc_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*EDITORS))):
     d = _get_own(db, user, doc_id)
-    _archive(d, user)
+    _archive(db, d, user)
     db.commit()
     return doc_out(d, detail=True)
 
@@ -151,7 +169,7 @@ def archive_document(doc_id: int, db: Session = Depends(get_db), user: User = De
 @router.post("/{doc_id}/restore", response_model=DocumentDetail, response_model_by_alias=True)
 def restore_document(doc_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*EDITORS))):
     d = _get_own(db, user, doc_id)
-    _restore(d)
+    _restore(db, d, user)
     db.commit()
     return doc_out(d, detail=True)
 
@@ -166,11 +184,11 @@ def bulk(body: BulkIn, db: Session = Depends(get_db), user: User = Depends(requi
         try:
             d = _get_own(db, user, doc_id)
             if body.action == "archive":
-                _archive(d, user)
+                _archive(db, d, user)
             elif body.action == "restore":
-                _restore(d)
+                _restore(db, d, user)
             else:
-                _delete(db, d)
+                _delete(db, d, user)
             db.flush()
             results.append(BulkItem(id=str(doc_id), ok=True))
         except HTTPException as e:
@@ -183,15 +201,15 @@ def bulk(body: BulkIn, db: Session = Depends(get_db), user: User = Depends(requi
 @router.post("/bulk/xml")
 def bulk_xml(body: BulkXmlIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     """ZIP with the XML of every selected document that passes validation; the rest are listed in _skipped.txt."""
-    buf, exported, skipped = io.BytesIO(), 0, []
+    buf, exported, skipped, opts = io.BytesIO(), 0, [], _opts(db)
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for doc_id in dict.fromkeys(body.ids):
             try:
                 d = _get_own(db, user, doc_id)
                 schema = _schema_of(db, d)
-                result = validate_document(d, schema)
-                if result["errors"]:
-                    skipped.append(f"{doc_id}: ошибок — {result['errors']}")
+                result = validate_document(d, schema, opts)
+                if result["blocking"]:
+                    skipped.append(f"{doc_id}: ошибок — {result['errors']}" + (f", предупреждений — {result['warnings']}" if result["blocking"] > result["errors"] else ""))
                     continue
                 z.writestr(_xml_filename(d), build_xml(d.data, d.schema_version, schema.content).xml)
                 exported += 1
@@ -218,7 +236,7 @@ def authors(db: Session = Depends(get_db), user: User = Depends(get_current_user
 def _analyze(db: Session, body: ImportPreviewIn):
     """Parse + map + check the file. Never touches the database."""
     try:
-        raw = decode_payload(body.content_base64)
+        raw = decode_payload(body.content_base64, get_settings(db)["maxXmlMb"])
         root = parse_xml(raw)
         mapped = map_document(root)
     except ImportFailure as e:
@@ -266,6 +284,7 @@ def import_document(body: ImportCreateIn, db: Session = Depends(get_db), user: U
     db.add(d)
     db.flush()
     _snapshot(db, d, user, f"Импорт из {body.filename}"[:500])
+    audit(db, "document.imported", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title} ← {body.filename}")
     db.commit()
     return ImportResult(document=doc_out(d, detail=True), report=report)
 
@@ -311,7 +330,7 @@ def update_meta(doc_id: int, body: DocumentPatch, db: Session = Depends(get_db),
 @router.delete("/{doc_id}", status_code=204)
 def delete_document(doc_id: int, db: Session = Depends(get_db), user: User = Depends(require_roles(*ADMINS))):
     d = _get_own(db, user, doc_id)
-    _delete(db, d)
+    _delete(db, d, user)
     db.commit()
     return Response(status_code=204)
 
@@ -329,6 +348,8 @@ def list_versions(doc_id: int, db: Session = Depends(get_db), user: User = Depen
 def save_version(doc_id: int, body: VersionIn, db: Session = Depends(get_db), user: User = Depends(require_roles(*EDITORS))):
     d = _get_own(db, user, doc_id)
     v = _snapshot(db, d, user, body.comment.strip() or "Версия сохранена")
+    audit(db, "document.version_saved", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title}: версия {v.number}")
+    notify(db, d.author, "version", f"Новая версия документа: {d.title}", f"v{v.number}: {v.comment}", _doc_link(d, "/versions"), actor=user)
     db.commit()
     return version_meta(v)
 
@@ -359,6 +380,8 @@ def restore(doc_id: int, number: int, db: Session = Depends(get_db), user: User 
     if d.status == DocumentStatus.validated:
         d.status = DocumentStatus.draft
     _snapshot(db, d, user, f"Восстановлена версия {number}")
+    audit(db, "document.version_restored", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title}: восстановлена версия {number}")
+    notify(db, d.author, "version", f"Восстановлена версия документа: {d.title}", f"Версия {number}", _doc_link(d, "/versions"), actor=user)
     db.commit()
     db.refresh(d)
     return doc_out(d, detail=True)
@@ -381,12 +404,15 @@ def validate(doc_id: int, db: Session = Depends(get_db), user: User = Depends(re
     d = _get_own(db, user, doc_id)
     if d.status == DocumentStatus.archived:
         raise api_error(409, "archived", "Документ в архиве")
-    result = validate_document(d, _schema_of(db, d))
+    result = validate_document(d, _schema_of(db, d), _opts(db))
     d.validation, d.validated_revision = result, d.revision
-    if result["errors"] == 0 and d.status in (DocumentStatus.draft, DocumentStatus.in_review):
+    if result["blocking"] == 0 and d.status in (DocumentStatus.draft, DocumentStatus.in_review):
         d.status = DocumentStatus.validated
-    elif result["errors"] > 0 and d.status == DocumentStatus.validated:
+    elif result["blocking"] > 0 and d.status == DocumentStatus.validated:
         d.status = DocumentStatus.draft
+    audit(db, "document.validated", user=user, entity_type="document", entity_id=d.id,
+          summary=f"{d.title}: ошибок {result['errors']}, предупреждений {result['warnings']}")
+    notify(db, d.author, "validation", f"Проверка документа: {d.title}", f"Ошибок: {result['errors']}, предупреждений: {result['warnings']}", _doc_link(d, "/validation"), actor=user)
     db.commit()
     return _validation_out(d, result)
 
@@ -418,10 +444,13 @@ def xml_download(doc_id: int, db: Session = Depends(get_db), user: User = Depend
     """Always re-validates the current data: a stored result is never trusted for export."""
     d = _get_own(db, user, doc_id)
     schema = _schema_of(db, d)
-    result = validate_document(d, schema)
-    if result["errors"]:
-        raise api_error(409, "validation_failed", f"Выгрузка недоступна: найдено ошибок — {result['errors']}")
+    result = validate_document(d, schema, _opts(db))
+    if result["blocking"]:
+        why = f"ошибок — {result['errors']}" + (f", предупреждений — {result['warnings']} (включён запрет выгрузки с предупреждениями)" if result["blocking"] > result["errors"] else "")
+        raise api_error(409, "validation_failed", f"Выгрузка недоступна: {why}")
     xml = build_xml(d.data, d.schema_version, schema.content).xml
+    audit(db, "document.exported", user=user, entity_type="document", entity_id=d.id, summary=f"{d.title}: XML, схема {d.schema_version}")
+    db.commit()
     return Response(xml, media_type="application/xml; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{_xml_filename(d)}"'})
 
@@ -429,5 +458,5 @@ def xml_download(doc_id: int, db: Session = Depends(get_db), user: User = Depend
 @router.get("/{doc_id}/validation/report")
 def validation_report(doc_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     d = _get_own(db, user, doc_id)
-    text = report_text(d, validate_document(d, _schema_of(db, d)))
+    text = report_text(d, validate_document(d, _schema_of(db, d), _opts(db)))
     return PlainTextResponse(text, headers={"Content-Disposition": f'attachment; filename="validation_report_{d.id}.txt"'})

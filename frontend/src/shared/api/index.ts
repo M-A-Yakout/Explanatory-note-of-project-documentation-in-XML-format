@@ -3,10 +3,11 @@
  * mock implementations today. To use a real backend, implement the same
  * interfaces with fetch() in `shared/api/http/*` and swap the export below.
  */
-import type { Author, BulkAction, BulkResult, SearchResult, ImportReport, ValidationResult, XmlPreview, SchemaInfo, StructureNode, Change, DocumentData, DocumentDetail, DocumentStatus, ExplanatoryNote, VersionMeta, AppNotification, Organization, Paginated, Project, ProjectStatus, ConstructionType, Session, User } from '../types'
+import type { Role, Author, BulkAction, BulkResult, SearchResult, ImportReport, ValidationResult, XmlPreview, SchemaInfo, StructureNode, Change, DocumentData, DocumentDetail, DocumentStatus, ExplanatoryNote, VersionMeta, AppNotification, Organization, Paginated, Project, ProjectStatus, ConstructionType, Session, User } from '../types'
 import { notifications, organizations, projects as mockProjectRows, users } from '../mock/data'
 
 import { ApiError } from './errors'
+import { demoAdmin, httpAdmin } from './admin'
 import { httpAuth, httpDocuments, httpOrganizations, httpProjects, httpSchemas, httpSearch } from './http'
 export { ApiError }
 
@@ -24,6 +25,8 @@ export interface AuthService {
   resetPassword(token: string, password: string): Promise<void>
   confirmEmail(token: string): Promise<{ email: string }>
   acceptInvite(token: string, payload: { fullName: string; password: string }): Promise<Session>
+  /** Who the invitation is for (read-only; does not consume the link). */
+  inviteInfo(token: string): Promise<{ email: string; organizationName: string; role: Role }>
   logout(): Promise<void>
   /** Current session from a stored token, or null. */
   me(): Promise<Session | null>
@@ -168,6 +171,9 @@ const mockAuth: AuthService = {
     await delay()
     return sessionFor(users[0])
   },
+  async inviteInfo() {
+    return { email: 'new.user@example.ru', organizationName: 'Демо-организация', role: 'designer' as Role }
+  },
   async logout() {
     await delay(150)
   },
@@ -256,5 +262,6 @@ export const api = {
   documents: useMock ? mockDocuments : httpDocuments,
   schemas: useMock ? demoSchemas : httpSchemas,
   search: useMock ? mockSearch : httpSearch,
+  ...(useMock ? demoAdmin : httpAdmin),
   notifications: mockNotifications,
 }
