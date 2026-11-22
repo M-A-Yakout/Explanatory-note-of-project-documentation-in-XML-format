@@ -18,6 +18,8 @@ export const argTypes = {
 }
 
 type Props = Partial<typeof args> & {
+  /** Replaces the generic "wrong e-mail or password" text, e.g. when sign-in is rate limited. */
+  errorMessage?: string
   onSubmit?: (values: LoginValues) => void
   onForgot?: () => void
   onRegister?: () => void
@@ -25,7 +27,7 @@ type Props = Partial<typeof args> & {
 }
 
 export default function Login(props: Props) {
-  const { state, email, onSubmit, onForgot, onRegister, onHome } = { ...args, ...props }
+  const { state, email, errorMessage, onSubmit, onForgot, onRegister, onHome } = { ...args, ...props }
   const {
     register,
     handleSubmit,
@@ -42,7 +44,9 @@ export default function Login(props: Props) {
       <p className="mt-2 text-sm leading-6 text-muted">{t('auth.loginLead')}</p>
 
       <div className="mt-6 empty:hidden">
-        {state === 'error' && <Alert tone="error" title={t('auth.loginError')} />}
+        {state === 'error' && (
+          <Alert tone="error" title={errorMessage ? 'Вход временно ограничен' : t('auth.loginError')}>{errorMessage}</Alert>
+        )}
         {state === 'locked' && (
           <Alert tone="error" title={t('auth.loginLocked')}>
             Обратитесь к администратору: d.melnikov@psi-proekt.ru

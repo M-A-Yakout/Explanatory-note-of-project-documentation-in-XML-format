@@ -5,6 +5,7 @@ Revises: 0006
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 revision = '0007'
@@ -46,7 +47,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('organization_id', sa.Integer(), nullable=False),
     sa.Column('email', sa.String(length=255), nullable=False),
-    sa.Column('role', sa.Enum('super_admin', 'org_admin', 'designer', 'expert', name='role'), nullable=False),
+    sa.Column('role', postgresql.ENUM('super_admin', 'org_admin', 'designer', 'expert', name='role', create_type=False), nullable=False),  # the type already exists since 0001
     sa.Column('nonce', sa.String(length=32), server_default='', nullable=False),
     sa.Column('invited_by_id', sa.Integer(), nullable=True),
     sa.Column('expires_at', sa.DateTime(timezone=True), nullable=False),

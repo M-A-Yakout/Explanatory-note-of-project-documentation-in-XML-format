@@ -9,6 +9,7 @@ from ..core.config import settings
 from ..core.db import get_db
 from ..core.errors import api_error
 from ..core.mailer import send_email
+from .. import ratelimit
 from ..core.security import TokenError, create_token, decode_payload, decode_token, hash_password, verify_password
 from ..core.timeutil import aware, utcnow
 from ..deps import get_current_user
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 def _session(user: User) -> SessionOut:
-    token = create_token(user.id, "access", settings.access_token_minutes)
+    token = create_token(user.id, "access", settings.access_token_minutes, v=user.token_version)
     return SessionOut(user=user_out(user), organization=org_out(user.organization), token=token)
 
 
@@ -37,6 +38,7 @@ def _user_count(db: Session, org_id: int) -> int:
 
 @router.post("/register", status_code=201)
 def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
+    ratelimit.attempt(db, f"reg:{ratelimit.client_ip(request)}", *ratelimit.REGISTER)
     cfg = get_settings(db)
     if db.scalar(select(User).where(User.email == body.email)):
         raise api_error(409, "conflict", "Пользователь с такой почтой уже зарегистрирован")
@@ -76,8 +78,12 @@ def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
 @router.post("/login", response_model=SessionOut, response_model_by_alias=True)
 def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     email = body.email.strip().lower()
+    ip = ratelimit.client_ip(request)
+    ratelimit.attempt(db, f"login:email:{email}", *ratelimit.LOGIN_EMAIL)  # every try on one account counts; success resets
+    ratelimit.check(db, f"login:ip:{ip}", *ratelimit.LOGIN_IP)  # credential stuffing from one address (failures only)
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(body.password, user.password_hash):
+        ratelimit.record(db, f"login:ip:{ip}")
         audit(db, "auth.login_failed", user=user, org_id=user.organization_id if user else None, user_name=user.full_name if user else "",
               entity_type="user", entity_id=user.id if user else "", summary=f"Неверные данные: {email}", result="denied", ip=_ip(request))
         db.commit()
@@ -88,6 +94,7 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
         raise api_error(423, "locked", "Учётная запись заблокирована")
     if not user.email_confirmed:
         raise api_error(403, "email_not_confirmed", "Подтвердите почту по ссылке из письма")
+    ratelimit.reset(db, f"login:email:{email}")
     user.last_login_at = utcnow()
     audit(db, "auth.login", user=user, entity_type="user", entity_id=user.id, summary="Вход в систему", ip=_ip(request))
     db.commit()
@@ -100,8 +107,11 @@ def me(user: User = Depends(get_current_user)):
 
 
 @router.post("/forgot-password", status_code=202)
-def forgot_password(body: EmailIn, db: Session = Depends(get_db)):
-    user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
+def forgot_password(body: EmailIn, request: Request, db: Session = Depends(get_db)):
+    email = body.email.strip().lower()
+    for key in (f"forgot:ip:{ratelimit.client_ip(request)}", f"forgot:email:{email}"):  # also stops mail-bombing one address
+        ratelimit.attempt(db, key, *ratelimit.FORGOT)
+    user = db.scalar(select(User).where(User.email == email))
     if user and user.is_active:  # same response either way: no account enumeration
         token = create_token(user.id, "reset", settings.reset_token_minutes)
         cfg = get_settings(db)["emailTemplates"]["reset"]
@@ -119,6 +129,7 @@ def reset_password(body: ResetIn, db: Session = Depends(get_db)):
     if user is None:
         raise api_error(400, "token_invalid", "Ссылка недействительна или устарела")
     user.password_hash = hash_password(body.password)
+    user.token_version += 1  # every session opened with the old password ends
     audit(db, "auth.password_reset", user=user, entity_type="user", entity_id=user.id, summary="Пароль сброшен по ссылке")
     db.commit()
     return Response(status_code=204)
@@ -160,6 +171,7 @@ def invite_info(token: str, db: Session = Depends(get_db)):
 
 @router.post("/accept-invite", response_model=SessionOut, response_model_by_alias=True)
 def accept_invite(body: AcceptInviteIn, request: Request, db: Session = Depends(get_db)):
+    ratelimit.attempt(db, f"invite:{ratelimit.client_ip(request)}", *ratelimit.INVITE_ACCEPT)
     inv = _valid_invitation(db, body.token)
     org = inv.organization
     if not org.is_active:
@@ -178,3 +190,12 @@ def accept_invite(body: AcceptInviteIn, request: Request, db: Session = Depends(
     notify(db, inv.invited_by, "invitation", f"{user.full_name} принял(а) приглашение", f"{user.email} · {inv.role.value}", "/admin/users")
     db.commit()
     return _session(user)
+
+
+@router.post("/logout", status_code=204)
+def logout(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    """Ends ALL sessions of the user (every token issued so far stops working)."""
+    user.token_version += 1
+    audit(db, "auth.logout", user=user, entity_type="user", entity_id=user.id, summary="Выход из системы")
+    db.commit()
+    return Response(status_code=204)

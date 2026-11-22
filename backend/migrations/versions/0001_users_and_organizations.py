@@ -51,4 +51,7 @@ def downgrade() -> None:
 
     op.drop_table('users')
     op.drop_table('organizations')
-    # ### end Alembic commands ###
+
+    # PostgreSQL keeps ENUM types after their tables are dropped: remove them so the migration can be re-applied
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS role")

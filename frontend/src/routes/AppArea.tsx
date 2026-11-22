@@ -16,7 +16,7 @@ const privateRoutes = routes
 
 /** Everything under /app: needs a session and a role the route allows. */
 export function AppArea({ theme, onToggleTheme }: { theme: 'light' | 'dark'; onToggleTheme: () => void }) {
-  const { session, loading, logout } = useAuth()
+  const { session, loading, logout, sessionExpired } = useAuth()
   const { pathname } = useLocation()
   const nav = useNavigate()
   const [defaultSchema, setDefaultSchema] = useState<string | undefined>()
@@ -31,7 +31,7 @@ export function AppArea({ theme, onToggleTheme }: { theme: 'light' | 'dark'; onT
   }, [session, refreshSchema])
 
   if (loading) return <div className="flex min-h-screen items-center justify-center text-sm text-muted">Загрузка…</div>
-  if (!session) return <Navigate to="/login" replace state={{ from: pathname }} />
+  if (!session) return <Navigate to="/login" replace state={{ from: pathname, expired: sessionExpired }} />
 
   const def = privateRoutes.find((r) => toRegex(r.path).test(pathname))
   if (!def) return <ErrorRoute code="404" />

@@ -1,0 +1,25 @@
+# Development: PostgreSQL + API with auto-reload. Run the UI with `cd frontend && npm run dev`.
+#   docker compose -f docker-compose.dev.yml up --build
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: pz, POSTGRES_PASSWORD: pz, POSTGRES_DB: pz }
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pz -d pz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build: ./backend
+    entrypoint: ["sh", "-c", "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://pz:pz@db:5432/pz
+    ports: ["8000:8000"]
+    volumes: ["./backend:/srv"]
+    depends_on:
+      db:
+        condition: service_healthy
+volumes:
+  pgdata: {}

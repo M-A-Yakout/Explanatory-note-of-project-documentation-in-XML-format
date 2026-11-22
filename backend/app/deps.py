@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from .core.db import get_db
 from .core.errors import api_error
-from .core.security import TokenError, decode_token
+from .core.security import TokenError, decode_payload
 from .models import Role, User
 
 bearer = HTTPBearer(auto_error=False)
@@ -16,11 +16,12 @@ def get_current_user(
     if creds is None:
         raise api_error(401, "unauthorized", "Требуется вход в систему")
     try:
-        user_id = decode_token(creds.credentials, "access")
+        payload = decode_payload(creds.credentials, "access")
     except TokenError as e:
         raise api_error(401, "token_expired" if e.expired else "unauthorized", "Сессия недействительна")
-    user = db.get(User, user_id)
-    if user is None or not user.is_active or (user.organization and not user.organization.is_active):
+    user = db.get(User, int(payload["sub"]))
+    if (user is None or not user.is_active or (user.organization and not user.organization.is_active)
+            or payload.get("v", 0) != user.token_version):  # tokens issued before a logout/password change are dead
         raise api_error(401, "unauthorized", "Сессия недействительна")
     return user
 

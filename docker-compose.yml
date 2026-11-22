@@ -1,14 +1,47 @@
+# Production-style stack: PostgreSQL + API + nginx (serves the UI and proxies /api).
+# Configure with .env (see .env.example):  docker compose up -d --build
 services:
   db:
-    image: postgres:16
-    environment: { POSTGRES_USER: pz, POSTGRES_PASSWORD: pz, POSTGRES_DB: pz }
-    ports: ["5432:5432"]
-    volumes: [pgdata:/var/lib/postgresql/data]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pz}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-pz}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   api:
     build: ./backend
-    environment: { DATABASE_URL: "postgresql+psycopg://pz:pz@db:5432/pz" }
-    command: sh -c "alembic upgrade head && python -m app.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    ports: ["8000:8000"]
-    volumes: ["./backend:/srv"]
-    depends_on: [db]
-volumes: { pgdata: {} }
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pz}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-pz}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY in .env (openssl rand -hex 32)}
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:?set SEED_ADMIN_EMAIL in .env}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?set SEED_ADMIN_PASSWORD in .env}
+      FRONTEND_URL: ${PUBLIC_URL:-http://localhost}
+      REQUIRE_EMAIL_CONFIRMATION: ${REQUIRE_EMAIL_CONFIRMATION:-false}
+      CORS_ORIGINS: "[]"          # UI and API share one origin behind nginx
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    expose:
+      - "8000"                    # reachable only from the web container, never published
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${HTTP_PORT:-80}:80"
+
+volumes:
+  pgdata:

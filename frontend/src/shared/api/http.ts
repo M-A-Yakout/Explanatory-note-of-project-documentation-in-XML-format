@@ -27,6 +27,11 @@ export async function request<T>(path: string, opts: { method?: string; body?: u
   const data = await res.json().catch(() => null)
   if (!res.ok) {
     const d = data?.detail
+    // a session that stopped working (logged out elsewhere, blocked, password changed): leave the app cleanly
+    if (res.status === 401 && token && path !== '/auth/login') {
+      tokenStore.clear()
+      window.dispatchEvent(new Event('pz:session-expired'))
+    }
     throw new ApiError(d?.code ?? 'unknown', d?.message ?? 'Ошибка сервера')
   }
   return data as T
@@ -91,6 +96,8 @@ export const httpAuth: AuthService = {
   },
   inviteInfo: (token) => request(`/auth/invite-info?token=${encodeURIComponent(token)}`),
   async logout() {
+    // ends every session of this user on the server; the local token is dropped even if the call fails
+    if (tokenStore.get()) await request('/auth/logout', { method: 'POST' }).catch(() => {})
     tokenStore.clear()
   },
   async me() {

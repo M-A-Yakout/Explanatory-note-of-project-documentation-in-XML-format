@@ -215,7 +215,8 @@ def test_change_password(client):
     assert bad.status_code == 400 and bad.json()["detail"]["code"] == "invalid_credentials"
     assert client.post("/api/users/me/password", json={"currentPassword": PASSWORD, "newPassword": PASSWORD}, headers=h).status_code == 422
     assert client.post("/api/users/me/password", json={"currentPassword": PASSWORD, "newPassword": "weak"}, headers=h).status_code == 422
-    assert client.post("/api/users/me/password", json={"currentPassword": PASSWORD, "newPassword": "NewStrong2026x"}, headers=h).status_code == 204
+    ok = client.post("/api/users/me/password", json={"currentPassword": PASSWORD, "newPassword": "NewStrong2026x"}, headers=h)
+    assert ok.status_code == 200 and ok.json()["token"]
     assert hdr(client, "anna@psi.ru")[1].status_code == 401
     assert hdr(client, "anna@psi.ru", "NewStrong2026x")[1].status_code == 200
     root = admin(client)
@@ -526,13 +527,15 @@ def test_setting_require_email_confirmation(client, outbox):
 
 
 def test_old_invitation_link_cannot_be_revived_by_a_reused_row_id(client, outbox):
-    """SQLite reuses the id of a deleted row; the link of a revoked invitation must still stay dead."""
+    """The link of a revoked invitation must stay dead, also where the freed row id is reused (SQLite)."""
     boss = auth(client)
     first = client.post("/api/users/invite", json={"email": "a@x.ru", "role": "designer"}, headers=boss).json()
     old_token = token_from(outbox)
     client.delete(f"/api/users/invitations/{first['id']}", headers=boss)
     second = client.post("/api/users/invite", json={"email": "b@x.ru", "role": "expert"}, headers=boss).json()
-    assert second["id"] == first["id"]  # the id really was reused (the situation this test is about)
+    with client.session_factory() as db:
+        if db.bind.dialect.name == "sqlite":  # SQLite reuses freed row ids, PostgreSQL never does
+            assert second["id"] == first["id"]  # the dangerous situation this test is about really occurs
     assert accept(client, old_token).json()["detail"]["code"] == "token_invalid"
     ok = accept(client, token_from(outbox))
     assert ok.status_code == 200 and ok.json()["user"]["email"] == "b@x.ru" and ok.json()["user"]["role"] == "expert"

@@ -88,7 +88,7 @@ def update_my_profile(body: ProfilePatch, db: Session = Depends(get_db), user: U
     return _profile(user)
 
 
-@router.post("/me/password", status_code=204)
+@router.post("/me/password")
 def change_password(body: PasswordChangeIn, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     if not verify_password(body.current_password, user.password_hash):
         audit(db, "auth.password_change_failed", user=user, entity_type="user", entity_id=user.id, summary="Неверный текущий пароль", result="denied")
@@ -97,9 +97,10 @@ def change_password(body: PasswordChangeIn, db: Session = Depends(get_db), user:
     if verify_password(body.new_password, user.password_hash):
         raise api_error(422, "validation", "Новый пароль должен отличаться от текущего")
     user.password_hash = hash_password(body.new_password)
+    user.token_version += 1  # other devices/sessions are signed out; this one gets a fresh token below
     audit(db, "auth.password_changed", user=user, entity_type="user", entity_id=user.id, summary="Пароль изменён")
     db.commit()
-    return Response(status_code=204)
+    return {"token": create_token(user.id, "access", env.access_token_minutes, v=user.token_version)}
 
 
 # ---------------- user administration ----------------

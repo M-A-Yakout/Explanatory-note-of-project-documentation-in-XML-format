@@ -22,22 +22,28 @@ export function LoginRoute() {
   const nav = useNavigate()
   const loc = useLocation()
   const { session, login } = useAuth()
-  const [state, setState] = useState<'default' | 'submitting' | 'error' | 'locked'>('default')
+  const expired = !!(loc.state as { expired?: boolean } | null)?.expired
+  const [state, setState] = useState<'default' | 'submitting' | 'error' | 'locked' | 'sessionExpired'>(expired ? 'sessionExpired' : 'default')
+  const [message, setMessage] = useState<string | undefined>()
   const from = (loc.state as { from?: string } | null)?.from ?? '/app'
   if (session) return <Navigate to="/app" replace />
   return (
     <Login
       state={state}
+      errorMessage={message}
       onHome={() => nav('/')}
       onForgot={() => nav('/forgot-password')}
       onRegister={() => nav('/register')}
       onSubmit={async (v) => {
         setState('submitting')
+        setMessage(undefined)
         try {
           await login(v.email, v.password)
           nav(from, { replace: true })
         } catch (e) {
-          setState(e instanceof ApiError && e.code === 'locked' ? 'locked' : 'error')
+          const code = e instanceof ApiError ? e.code : ''
+          if (code === 'too_many_attempts') setMessage((e as ApiError).message)
+          setState(code === 'locked' ? 'locked' : 'error')
         }
       }}
     />

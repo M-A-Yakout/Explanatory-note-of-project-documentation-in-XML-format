@@ -1,5 +1,5 @@
 import { ApiError } from './errors'
-import { downloadFileWithQuery, request } from './http'
+import { downloadFileWithQuery, request, tokenStore } from './http'
 import type {
   AdminStats, AuditEntry, DashboardStats, InvitationInfo, Notice, OrgAdmin, Page, Prefs, Profile, Role, SystemSettings, UserAdmin,
 } from '../types'
@@ -59,7 +59,11 @@ export const httpAdmin: AdminServices = {
   profile: {
     get: () => request('/users/me'),
     update: (patch) => request('/users/me', { method: 'PATCH', body: patch }),
-    changePassword: (currentPassword, newPassword) => request('/users/me/password', { method: 'POST', body: { currentPassword, newPassword } }),
+    async changePassword(currentPassword, newPassword) {
+      // other devices are signed out by the server; this session continues with the fresh token
+      const r = await request<{ token: string }>('/users/me/password', { method: 'POST', body: { currentPassword, newPassword } })
+      tokenStore.set(r.token)
+    },
   },
   orgs: {
     list: () => request('/organizations'),

@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.db import Base
@@ -38,6 +38,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(default=True)
     email_confirmed: Mapped[bool] = mapped_column(default=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # bumped on logout / password change: kills older tokens
     position: Mapped[str] = mapped_column(String(255), default="", server_default="")
     phone: Mapped[str] = mapped_column(String(50), default="", server_default="")
     prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # notification preferences
@@ -205,3 +206,12 @@ class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict | list | str | int | bool | None] = mapped_column(JSON)
+
+
+class AuthAttempt(Base):
+    """One row per counted authentication attempt. Shared by every API worker/instance (unlike process memory)."""
+    __tablename__ = "auth_attempts"
+    __table_args__ = (Index("ix_auth_attempts_key_created", "key", "created_at"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(300))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

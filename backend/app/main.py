@@ -8,11 +8,23 @@ from .core.config import settings
 from .routers import auth, health, organizations, projects, documents, xml_schemas, search, users, audit, notifications, stats
 from .routers import settings as settings_router
 
-app = FastAPI(title="ПЗ Генератор API", version="0.2.0")
+app = FastAPI(title="ПЗ Генератор API", version="1.0.0",
+              docs_url=None if settings.environment == "production" else "/docs",
+              redoc_url=None, openapi_url=None if settings.environment == "production" else "/openapi.json")
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.cors_origins,
     allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault("Cache-Control", "no-store")  # API answers hold personal data: never cached by browsers/proxies
+    return response
 
 
 @app.exception_handler(RequestValidationError)

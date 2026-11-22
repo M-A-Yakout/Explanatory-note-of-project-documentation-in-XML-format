@@ -49,4 +49,8 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_projects_organization_id'))
 
     op.drop_table('projects')
-    # ### end Alembic commands ###
+
+    # PostgreSQL keeps ENUM types after their tables are dropped: remove them so the migration can be re-applied
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("DROP TYPE IF EXISTS constructiontype")
+        op.execute("DROP TYPE IF EXISTS projectstatus")
